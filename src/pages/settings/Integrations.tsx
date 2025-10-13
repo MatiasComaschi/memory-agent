@@ -1,45 +1,185 @@
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Mail, MessageSquare, Users2, Sparkles, MapPin } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { initiateGmailOAuth } from "@/lib/googleOAuth";
 
 const integrations = [
   {
     category: "Email Integration",
     items: [
-      { name: "Gmail", description: "Sync emails and send messages", icon: Mail, connected: false },
-      { name: "Microsoft 365", description: "Outlook integration", icon: Mail, connected: false },
+      { 
+        name: "Gmail", 
+        description: "Sync emails and send messages", 
+        icon: Mail, 
+        provider: "gmail",
+        requiresOAuth: true 
+      },
+      { 
+        name: "Microsoft 365", 
+        description: "Outlook integration", 
+        icon: Mail, 
+        provider: "microsoft365",
+        requiresOAuth: true 
+      },
     ],
   },
   {
     category: "SMS Integration",
     items: [
-      { name: "Twilio", description: "Send and receive SMS", icon: MessageSquare, connected: false },
+      { 
+        name: "Twilio", 
+        description: "Send and receive SMS", 
+        icon: MessageSquare, 
+        provider: "twilio",
+        requiresOAuth: false 
+      },
     ],
   },
   {
     category: "CRM Integration",
     items: [
-      { name: "HubSpot", description: "Sync contacts and deals", icon: Users2, connected: false },
-      { name: "Pipedrive", description: "CRM integration", icon: Users2, connected: false },
-      { name: "Follow Up Boss", description: "Real estate CRM", icon: Users2, connected: false },
+      { 
+        name: "HubSpot", 
+        description: "Sync contacts and deals", 
+        icon: Users2, 
+        provider: "hubspot",
+        requiresOAuth: true 
+      },
+      { 
+        name: "Pipedrive", 
+        description: "CRM integration", 
+        icon: Users2, 
+        provider: "pipedrive",
+        requiresOAuth: true 
+      },
+      { 
+        name: "Follow Up Boss", 
+        description: "Real estate CRM", 
+        icon: Users2, 
+        provider: "followupboss",
+        requiresOAuth: true 
+      },
     ],
   },
   {
     category: "AI Integration",
     items: [
-      { name: "OpenAI", description: "AI message generation", icon: Sparkles, connected: false },
+      { 
+        name: "OpenAI", 
+        description: "AI message generation", 
+        icon: Sparkles, 
+        provider: "openai",
+        requiresOAuth: false 
+      },
     ],
   },
   {
     category: "Location Integration",
     items: [
-      { name: "Google Maps", description: "Location data", icon: MapPin, connected: false },
+      { 
+        name: "Google Maps", 
+        description: "Location data", 
+        icon: MapPin, 
+        provider: "googlemaps",
+        requiresOAuth: false 
+      },
     ],
   },
 ];
 
 const Integrations = () => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: connectedIntegrations } = useQuery({
+    queryKey: ["integrations"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("integrations")
+        .select("provider");
+
+      if (error) throw error;
+      return data?.map((i: any) => i.provider) || [];
+    },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async (provider: string) => {
+      if (provider === "gmail") {
+        // Initiate custom Gmail OAuth flow
+        initiateGmailOAuth();
+        return;
+      }
+
+      // For other providers, just create a placeholder record
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("org_id")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile?.org_id) throw new Error("Organization not found");
+
+      const { error } = await supabase.from("integrations").insert({
+        org_id: profile.org_id,
+        provider,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      toast({
+        title: "Integration connected",
+        description: "Integration has been enabled.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async (provider: string) => {
+      const { error } = await supabase
+        .from("integrations")
+        .delete()
+        .eq("provider", provider);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      toast({
+        title: "Integration disconnected",
+        description: "Integration has been disabled.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const isConnected = (provider: string) => {
+    return connectedIntegrations?.includes(provider);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -70,7 +210,7 @@ const Integrations = () => {
                         </CardDescription>
                       </div>
                     </div>
-                    {integration.connected && (
+                    {isConnected(integration.provider) && (
                       <Badge variant="default" className="bg-success text-success-foreground">
                         Connected
                       </Badge>
@@ -79,10 +219,17 @@ const Integrations = () => {
                 </CardHeader>
                 <CardContent>
                   <Button
-                    variant={integration.connected ? "outline" : "default"}
+                    variant={isConnected(integration.provider) ? "outline" : "default"}
                     className="w-full"
+                    onClick={() => {
+                      if (isConnected(integration.provider)) {
+                        disconnectMutation.mutate(integration.provider);
+                      } else {
+                        connectMutation.mutate(integration.provider);
+                      }
+                    }}
                   >
-                    {integration.connected ? "Disconnect" : "Connect"}
+                    {isConnected(integration.provider) ? "Disconnect" : "Connect"}
                   </Button>
                 </CardContent>
               </Card>

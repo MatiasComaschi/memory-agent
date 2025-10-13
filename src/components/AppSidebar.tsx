@@ -4,6 +4,7 @@ import {
   Users,
   Megaphone,
   Settings,
+  LayoutDashboard,
 } from "lucide-react";
 import {
   Sidebar,
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const menuItems = [
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Leads", url: "/leads", icon: Users },
   { title: "Campaigns", url: "/campaigns", icon: Megaphone },
   { title: "Settings", url: "/settings", icon: Settings },
@@ -28,7 +30,7 @@ export function AppSidebar() {
       : "hover:bg-accent/50";
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar>
       <SidebarContent>
         {/* Logo */}
         <div className="p-4 flex items-center gap-2 border-b">

@@ -14,6 +14,151 @@ export type Database = {
   }
   public: {
     Tables: {
+      campaign_sends: {
+        Row: {
+          campaign_id: string
+          channel: string
+          id: string
+          lead_id: string
+          message_content: string
+          sent_at: string
+          status: string
+        }
+        Insert: {
+          campaign_id: string
+          channel: string
+          id?: string
+          lead_id: string
+          message_content: string
+          sent_at?: string
+          status?: string
+        }
+        Update: {
+          campaign_id?: string
+          channel?: string
+          id?: string
+          lead_id?: string
+          message_content?: string
+          sent_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_sends_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_sends_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          channels: Json | null
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          message_template: string
+          name: string
+          org_id: string
+          status: string
+          target_criteria: Json | null
+          trigger_config: Json | null
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          channels?: Json | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          message_template: string
+          name: string
+          org_id: string
+          status?: string
+          target_criteria?: Json | null
+          trigger_config?: Json | null
+          trigger_type: string
+          updated_at?: string
+        }
+        Update: {
+          channels?: Json | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          message_template?: string
+          name?: string
+          org_id?: string
+          status?: string
+          target_criteria?: Json | null
+          trigger_config?: Json | null
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integrations: {
+        Row: {
+          access_token: string | null
+          connected_at: string
+          id: string
+          metadata: Json | null
+          org_id: string
+          provider: string
+          refresh_token: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          connected_at?: string
+          id?: string
+          metadata?: Json | null
+          org_id: string
+          provider: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          connected_at?: string
+          id?: string
+          metadata?: Json | null
+          org_id?: string
+          provider?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       intent_snapshots: {
         Row: {
           created_at: string | null
