@@ -22,15 +22,43 @@ serve(async (req) => {
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get campaign details
+    // Get campaign details and verify org ownership
     const { data: campaign, error: campaignError } = await supabase
       .from('campaigns')
-      .select('*')
+      .select('*, org_id')
       .eq('id', campaignId)
       .single();
 
     if (campaignError || !campaign) {
-      throw new Error("Campaign not found");
+      console.error("Campaign not found:", campaignError);
+      return new Response(
+        JSON.stringify({ error: "Campaign not found" }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get authenticated user's org_id from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user } } = await supabase.auth.getUser(token);
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('org_id')
+          .eq('id', user.id)
+          .single();
+        
+        // Verify user belongs to campaign's organization
+        if (profile?.org_id !== campaign.org_id) {
+          console.error("Unauthorized: User org does not match campaign org");
+          return new Response(
+            JSON.stringify({ error: "Unauthorized access" }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
     }
 
     // Get lead details
@@ -132,8 +160,23 @@ Return ONLY valid JSON:
     let generatedMessage;
     try {
       generatedMessage = JSON.parse(messageContent);
+      
+      // Validate generated content doesn't contain spam patterns
+      const content = channel === 'email' ? generatedMessage.body : generatedMessage.message;
+      const suspiciousPatterns = /\b(click here now|act immediately|urgent action required|verify account now|claim prize)\b/gi;
+      if (suspiciousPatterns.test(content)) {
+        console.warn("AI generated suspicious content, rejecting");
+        throw new Error("Generated content failed validation");
+      }
+      
+      // Limit URL count in generated content
+      const urlCount = (content.match(/https?:\/\//g) || []).length;
+      if (urlCount > 3) {
+        console.warn("AI generated too many URLs, rejecting");
+        throw new Error("Generated content contains too many URLs");
+      }
     } catch (e) {
-      console.error("Failed to parse AI response:", messageContent);
+      console.error("Failed to parse or validate AI response:", messageContent);
       throw new Error("Invalid AI response format");
     }
 
@@ -214,8 +257,9 @@ Return ONLY valid JSON:
       console.error("Failed to record error:", recordError);
     }
 
+    // Return generic error to client, keep details in logs
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "Failed to send campaign message" }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

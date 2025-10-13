@@ -8,12 +8,31 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+import { z } from "zod";
 
 interface CreateCampaignDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }
+
+const messageTemplateSchema = z.string()
+  .min(10, "Message template must be at least 10 characters")
+  .max(5000, "Message template must be less than 5000 characters")
+  .refine(
+    (val) => {
+      const suspiciousPatterns = /\b(click here now|act immediately|urgent action required|verify account now|claim prize|limited time offer|you've won)\b/gi;
+      return !suspiciousPatterns.test(val);
+    },
+    "Message contains suspicious spam-like phrases"
+  )
+  .refine(
+    (val) => {
+      const urlCount = (val.match(/https?:\/\//g) || []).length;
+      return urlCount <= 3;
+    },
+    "Message contains too many URLs (maximum 3 allowed)"
+  );
 
 export function CreateCampaignDialog({ open, onOpenChange, onSuccess }: CreateCampaignDialogProps) {
   const { toast } = useToast();
@@ -35,6 +54,11 @@ export function CreateCampaignDialog({ open, onOpenChange, onSuccess }: CreateCa
     setLoading(true);
 
     try {
+      // Validate message template
+      const validationResult = messageTemplateSchema.safeParse(formData.message_template);
+      if (!validationResult.success) {
+        throw new Error(validationResult.error.errors[0].message);
+      }
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 

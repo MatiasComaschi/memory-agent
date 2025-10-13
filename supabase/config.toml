@@ -19,10 +19,10 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.process-campaigns]
-verify_jwt = false
+verify_jwt = true
 
 [functions.send-campaign-message]
-verify_jwt = false
+verify_jwt = true
 
 [functions.refresh-oauth-token]
 verify_jwt = false
