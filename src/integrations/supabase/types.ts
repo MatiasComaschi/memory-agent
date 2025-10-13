@@ -568,6 +568,16 @@ export type Database = {
         }
         Relationships: []
       }
+      message_queue_stats: {
+        Row: {
+          avg_retries: number | null
+          channel: string | null
+          count: number | null
+          last_created: string | null
+          status: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_user_org_id: {

@@ -20,11 +20,18 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Plus, Search, Filter, ArrowLeft } from "lucide-react";
+import { Sparkles, Plus, Search, Filter, ArrowLeft, Upload, MapPin, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { useMutation } from "@tanstack/react-query";
 
 interface Lead {
   id: string;
@@ -154,6 +161,64 @@ const Leads = () => {
     await supabase.auth.signOut();
     toast.success("Signed out successfully");
   };
+
+  const syncCrmMutation = useMutation({
+    mutationFn: async ({ leadId, provider }: { leadId: string; provider: string }) => {
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) throw new Error("Lead not found");
+
+      const [firstName, ...lastNameParts] = lead.full_name.split(' ');
+      
+      const { data, error } = await supabase.functions.invoke('sync-crm', {
+        body: {
+          provider,
+          action: provider === 'hubspot' ? 'create_contact' : provider === 'pipedrive' ? 'create_person' : 'create_lead',
+          leadData: {
+            first_name: firstName,
+            last_name: lastNameParts.join(' ') || '',
+            full_name: lead.full_name,
+            email: lead.email,
+            phone: lead.phone,
+            city: lead.city,
+            stage: lead.stage,
+          }
+        }
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      toast.success(`Successfully synced to ${variables.provider}!`);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to sync with CRM");
+    }
+  });
+
+  const enrichLocationMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) throw new Error("Lead not found");
+
+      const address = `${lead.city || ''}, ${lead.zip || ''}`.trim();
+      if (!address) throw new Error("No location information available");
+
+      const { data, error } = await supabase.functions.invoke('enrich-location', {
+        body: { leadId, address }
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Location enriched successfully!");
+      loadLeads();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to enrich location");
+    }
+  });
 
   const getStageColor = (stage: string) => {
     switch (stage) {
@@ -373,9 +438,36 @@ const Leads = () => {
                   <div className="space-y-3">
                     <div className="flex items-start justify-between">
                       <h3 className="font-semibold text-lg">{lead.full_name}</h3>
-                      <Badge className={getStageColor(lead.stage)}>
-                        {lead.stage.replace("_", " ")}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge className={getStageColor(lead.stage)}>
+                          {lead.stage.replace("_", " ")}
+                        </Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'hubspot' })}>
+                              <Upload className="h-4 w-4 mr-2" />
+                              Sync to HubSpot
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'pipedrive' })}>
+                              <Upload className="h-4 w-4 mr-2" />
+                              Sync to Pipedrive
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'followupboss' })}>
+                              <Upload className="h-4 w-4 mr-2" />
+                              Sync to Follow Up Boss
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => enrichLocationMutation.mutate(lead.id)}>
+                              <MapPin className="h-4 w-4 mr-2" />
+                              Enrich Location
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                     <div className="space-y-1 text-sm text-muted-foreground">
                       {lead.email && <p>📧 {lead.email}</p>}
