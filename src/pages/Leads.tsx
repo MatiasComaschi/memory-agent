@@ -183,30 +183,21 @@ const Leads = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-subtle">
-      {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
-                <Sparkles className="h-4 w-4 text-white" />
-              </div>
-              <h1 className="text-xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                EchoLead
-              </h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={handleSignOut}>
-              Sign Out
-            </Button>
-          </div>
+    <div className="min-h-full">
+      {/* Header content moved to App.tsx layout */}
+      <div className="flex items-center justify-between px-8 py-4 border-b">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+            Leads
+          </h1>
         </div>
-      </header>
+        <Button variant="ghost" onClick={handleSignOut}>
+          Sign Out
+        </Button>
+      </div>
 
       <div className="container mx-auto px-4 py-8">
         {/* Actions Bar */}

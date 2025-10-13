@@ -1,0 +1,62 @@
+import { NavLink } from "react-router-dom";
+import {
+  Sparkles,
+  Users,
+  Megaphone,
+  Settings,
+} from "lucide-react";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+
+const menuItems = [
+  { title: "Leads", url: "/leads", icon: Users },
+  { title: "Campaigns", url: "/campaigns", icon: Megaphone },
+  { title: "Settings", url: "/settings", icon: Settings },
+];
+
+export function AppSidebar() {
+  const getNavCls = ({ isActive }: { isActive: boolean }) =>
+    isActive
+      ? "bg-accent text-accent-foreground font-medium"
+      : "hover:bg-accent/50";
+
+  return (
+    <Sidebar collapsible="icon">
+      <SidebarContent>
+        {/* Logo */}
+        <div className="p-4 flex items-center gap-2 border-b">
+          <div className="h-8 w-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
+            <Sparkles className="h-4 w-4 text-white" />
+          </div>
+          <h1 className="text-lg font-bold bg-gradient-primary bg-clip-text text-transparent">
+            EchoLead
+          </h1>
+        </div>
+
+        <SidebarGroup className="pt-4">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {menuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    <NavLink to={item.url} className={getNavCls}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
+  );
+}
