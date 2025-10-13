@@ -47,6 +47,13 @@ export type Database = {
             foreignKeyName: "campaign_sends_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "campaign_stats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_sends_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "campaigns"
             referencedColumns: ["id"]
           },
@@ -410,7 +417,18 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      campaign_stats: {
+        Row: {
+          failed_sends: number | null
+          id: string | null
+          last_sent_at: string | null
+          name: string | null
+          status: string | null
+          successful_sends: number | null
+          total_sends: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_user_org_id: {
