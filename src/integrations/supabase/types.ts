@@ -14,6 +14,76 @@ export type Database = {
   }
   public: {
     Tables: {
+      campaign_logs: {
+        Row: {
+          campaign_id: string
+          created_at: string | null
+          error_message: string | null
+          execution_duration_ms: number | null
+          execution_time: string | null
+          id: string
+          leads_processed: number | null
+          messages_failed: number | null
+          messages_sent: number | null
+          messages_triggered: number | null
+          metadata: Json | null
+          org_id: string
+          status: string | null
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string | null
+          error_message?: string | null
+          execution_duration_ms?: number | null
+          execution_time?: string | null
+          id?: string
+          leads_processed?: number | null
+          messages_failed?: number | null
+          messages_sent?: number | null
+          messages_triggered?: number | null
+          metadata?: Json | null
+          org_id: string
+          status?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string | null
+          error_message?: string | null
+          execution_duration_ms?: number | null
+          execution_time?: string | null
+          id?: string
+          leads_processed?: number | null
+          messages_failed?: number | null
+          messages_sent?: number | null
+          messages_triggered?: number | null
+          metadata?: Json | null
+          org_id?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_logs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_stats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_logs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_logs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_sends: {
         Row: {
           campaign_id: string
@@ -325,6 +395,75 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "leads_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_queue: {
+        Row: {
+          channel: string
+          created_at: string | null
+          error_message: string | null
+          id: string
+          lead_id: string
+          max_retries: number | null
+          message_content: string
+          metadata: Json | null
+          org_id: string
+          processed_at: string | null
+          retry_count: number | null
+          scheduled_for: string | null
+          status: string
+          subject: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          channel: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          lead_id: string
+          max_retries?: number | null
+          message_content: string
+          metadata?: Json | null
+          org_id: string
+          processed_at?: string | null
+          retry_count?: number | null
+          scheduled_for?: string | null
+          status?: string
+          subject?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          channel?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          lead_id?: string
+          max_retries?: number | null
+          message_content?: string
+          metadata?: Json | null
+          org_id?: string
+          processed_at?: string | null
+          retry_count?: number | null
+          scheduled_for?: string | null
+          status?: string
+          subject?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_queue_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "orgs"

@@ -23,3 +23,15 @@ verify_jwt = false
 
 [functions.send-campaign-message]
 verify_jwt = false
+
+[functions.refresh-oauth-token]
+verify_jwt = false
+
+[functions.process-message-queue]
+verify_jwt = false
+
+[functions.sync-crm]
+verify_jwt = true
+
+[functions.enrich-location]
+verify_jwt = true
