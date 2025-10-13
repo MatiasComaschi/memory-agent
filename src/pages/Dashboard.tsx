@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Sparkles, TrendingUp, Clock, Zap, Search, MessageSquare, Mail, User } from "lucide-react";
+import { Sparkles, TrendingUp, Clock, Zap, Search, MessageSquare, Mail, User, Brain } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 interface Lead {
   id: string;
@@ -18,6 +18,15 @@ interface Lead {
   source: string;
   city: string | null;
   updated_at: string;
+  email?: string;
+  phone?: string;
+}
+
+interface IntentSnapshot {
+  urgency_score: number;
+  sentiment: string;
+  purchase_window: string;
+  gating_factor: string;
 }
 
 interface WhisperCard {
@@ -25,6 +34,7 @@ interface WhisperCard {
   daysSilent: number;
   urgency: "high" | "medium" | "low";
   trigger?: string;
+  intent?: IntentSnapshot;
 }
 
 const Dashboard = () => {
@@ -57,23 +67,57 @@ const Dashboard = () => {
 
       setLeads(data || []);
 
-      // Generate whisper cards (mock logic for now)
-      const cards: WhisperCard[] = (data || []).slice(0, 5).map((lead) => {
-        const daysSilent = Math.floor(
-          (Date.now() - new Date(lead.updated_at).getTime()) / (1000 * 60 * 60 * 24)
-        );
-        
-        let urgency: "high" | "medium" | "low" = "low";
-        if (daysSilent > 30) urgency = "high";
-        else if (daysSilent > 14) urgency = "medium";
+      // Get intent snapshots for leads
+      const leadIds = (data || []).map(l => l.id);
+      const { data: intentData } = await supabase
+        .from("intent_snapshots")
+        .select("*")
+        .in("lead_id", leadIds)
+        .order("created_at", { ascending: false });
 
-        return {
-          lead,
-          daysSilent,
-          urgency,
-          trigger: daysSilent > 21 ? `Silent for ${daysSilent} days` : undefined,
-        };
+      // Create a map of latest intent per lead
+      const intentMap = new Map();
+      intentData?.forEach(intent => {
+        if (!intentMap.has(intent.lead_id)) {
+          intentMap.set(intent.lead_id, intent);
+        }
       });
+
+      // Generate whisper cards with AI insights
+      const cards: WhisperCard[] = (data || [])
+        .slice(0, 10)
+        .map((lead) => {
+          const daysSilent = Math.floor(
+            (Date.now() - new Date(lead.updated_at).getTime()) / (1000 * 60 * 60 * 24)
+          );
+          
+          const intent = intentMap.get(lead.id);
+          let urgency: "high" | "medium" | "low" = "low";
+          
+          // Use AI urgency score if available
+          if (intent?.urgency_score) {
+            if (intent.urgency_score >= 70) urgency = "high";
+            else if (intent.urgency_score >= 40) urgency = "medium";
+          } else {
+            // Fallback to time-based urgency
+            if (daysSilent > 30) urgency = "high";
+            else if (daysSilent > 14) urgency = "medium";
+          }
+
+          return {
+            lead,
+            daysSilent,
+            urgency,
+            trigger: daysSilent > 14 ? `Silent for ${daysSilent} days` : undefined,
+            intent,
+          };
+        })
+        .sort((a, b) => {
+          // Sort by AI urgency score first, then by days silent
+          const scoreA = a.intent?.urgency_score || 0;
+          const scoreB = b.intent?.urgency_score || 0;
+          return scoreB - scoreA;
+        });
 
       setWhisperCards(cards);
     } catch (error: any) {
@@ -89,6 +133,45 @@ const Dashboard = () => {
     toast.success("Signed out successfully");
   };
 
+  const analyzeIntentMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      const { data, error } = await supabase.functions.invoke('analyze-lead-intent', {
+        body: { leadId }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("AI analysis complete!");
+      loadDashboardData(); // Refresh to show new insights
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to analyze lead intent");
+    }
+  });
+
+  const generateMessageMutation = useMutation({
+    mutationFn: async ({ leadId, messageType }: { leadId: string; messageType: string }) => {
+      const { data, error } = await supabase.functions.invoke('generate-message', {
+        body: { leadId, messageType }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      if (variables.messageType === 'email' && data.message) {
+        setEmailSubject(data.message.subject);
+        setEmailMessage(data.message.body);
+      } else if (variables.messageType === 'sms' && data.message) {
+        setSmsMessage(data.message.message);
+      }
+      toast.success("AI message generated!");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to generate message");
+    }
+  });
+
   const sendEmailMutation = useMutation({
     mutationFn: async ({ leadId, subject, message }: { leadId: string; subject: string; message: string }) => {
       const { data, error } = await supabase.functions.invoke('send-email', {
@@ -102,6 +185,7 @@ const Dashboard = () => {
       setEmailDialogOpen(false);
       setEmailSubject("");
       setEmailMessage("");
+      loadDashboardData();
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to send email");
@@ -120,6 +204,7 @@ const Dashboard = () => {
       toast.success("SMS sent successfully!");
       setSmsDialogOpen(false);
       setSmsMessage("");
+      loadDashboardData();
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to send SMS");
@@ -137,6 +222,11 @@ const Dashboard = () => {
     setEmailSubject("Following up on your inquiry");
     setEmailMessage(`Hi ${lead.full_name.split(' ')[0]},\n\n`);
     setEmailDialogOpen(true);
+  };
+
+  const handleGenerateAiMessage = (messageType: 'email' | 'sms') => {
+    if (!selectedLead) return;
+    generateMessageMutation.mutate({ leadId: selectedLead.id, messageType });
   };
 
   const handleSendEmail = () => {
@@ -291,6 +381,12 @@ const Dashboard = () => {
                           <Badge className={getUrgencyColor(card.urgency)}>
                             {card.urgency}
                           </Badge>
+                          {card.intent && (
+                            <Badge variant="outline" className="border-primary text-primary">
+                              <Brain className="h-3 w-3 mr-1" />
+                              AI Score: {card.intent.urgency_score}
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
                           <span>Source: {card.lead.source}</span>
@@ -299,6 +395,19 @@ const Dashboard = () => {
                             Last activity: {formatDistanceToNow(new Date(card.lead.updated_at))} ago
                           </span>
                         </div>
+                        {card.intent && (
+                          <div className="flex flex-wrap items-center gap-2 text-sm mb-3">
+                            <Badge variant="secondary">
+                              {card.intent.sentiment} sentiment
+                            </Badge>
+                            <Badge variant="secondary">
+                              {card.intent.purchase_window.replace('_', ' ')} timeframe
+                            </Badge>
+                            <Badge variant="secondary">
+                              {card.intent.gating_factor} concern
+                            </Badge>
+                          </div>
+                        )}
                         {card.trigger && (
                           <div className="flex items-center gap-2 text-sm">
                             <Badge variant="outline" className="border-warning text-warning">
@@ -309,6 +418,17 @@ const Dashboard = () => {
                         )}
                       </div>
                       <div className="flex flex-col gap-2">
+                        {!card.intent && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => analyzeIntentMutation.mutate(card.lead.id)}
+                            disabled={analyzeIntentMutation.isPending}
+                          >
+                            <Brain className="h-4 w-4 mr-2" />
+                            {analyzeIntentMutation.isPending ? "Analyzing..." : "AI Analyze"}
+                          </Button>
+                        )}
                         <Button 
                           size="sm" 
                           variant="default"
@@ -357,6 +477,15 @@ const Dashboard = () => {
             </p>
           </div>
           <DialogFooter>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => handleGenerateAiMessage('sms')}
+              disabled={generateMessageMutation.isPending}
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              {generateMessageMutation.isPending ? "Generating..." : "AI Generate"}
+            </Button>
             <Button variant="outline" onClick={() => setSmsDialogOpen(false)}>
               Cancel
             </Button>
@@ -400,6 +529,15 @@ const Dashboard = () => {
             </div>
           </div>
           <DialogFooter>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => handleGenerateAiMessage('email')}
+              disabled={generateMessageMutation.isPending}
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              {generateMessageMutation.isPending ? "Generating..." : "AI Generate"}
+            </Button>
             <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>
               Cancel
             </Button>
