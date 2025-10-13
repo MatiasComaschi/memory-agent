@@ -27,7 +27,7 @@ export function AppSidebar() {
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive
       ? "bg-accent text-accent-foreground font-medium"
-      : "hover:bg-accent/50";
+      : "text-sidebar-foreground hover:bg-accent/50 hover:text-accent-foreground";
 
   return (
     <Sidebar collapsible="icon" className="border-r">
