@@ -49,7 +49,7 @@ const Leads = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [stageFilter, setStageFilter] = useState<string>("all");
+  const [stageFilter, setStageFilter] = useState<"all" | "New" | "Conversation" | "Nurture" | "Hot" | "Under_Contract" | "Closed" | "Lost">("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newLead, setNewLead] = useState<{
     full_name: string;
@@ -80,7 +80,7 @@ const Leads = () => {
       let query = supabase.from("leads").select("*").order("updated_at", { ascending: false });
 
       if (stageFilter !== "all") {
-        query = query.eq("stage", stageFilter);
+        query = query.eq("stage", stageFilter as any);
       }
 
       const { data, error } = await query;
@@ -346,7 +346,7 @@ const Leads = () => {
             />
           </div>
           <Select value={stageFilter} onValueChange={(value) => {
-            setStageFilter(value);
+            setStageFilter(value as typeof stageFilter);
             setLoading(true);
             setTimeout(() => loadLeads(), 100);
           }}>
