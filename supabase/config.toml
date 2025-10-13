@@ -17,3 +17,9 @@ verify_jwt = true
 
 [functions.generate-message]
 verify_jwt = true
+
+[functions.process-campaigns]
+verify_jwt = false
+
+[functions.send-campaign-message]
+verify_jwt = false
