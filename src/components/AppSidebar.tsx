@@ -12,7 +12,6 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
@@ -42,21 +41,20 @@ export function AppSidebar() {
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild tooltip={item.title}>
-                    <NavLink
-                      to={item.url}
-                      className={({ isActive }) =>
-                        `flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
-                          isActive
-                            ? "bg-accent text-accent-foreground font-medium"
-                            : "text-gray-700 hover:bg-accent/50 hover:text-accent-foreground"
-                        }`
-                      }
-                    >
-                      <item.icon className="h-5 w-5" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
+                  <NavLink
+                    to={item.url}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-4 py-2.5 rounded-md transition-all ${
+                        isActive
+                          ? "bg-accent text-gray-900 font-medium"
+                          : "text-gray-900 hover:bg-accent/50 hover:text-gray-900"
+                      }`
+                    }
+                    style={{ color: '#111827' }}
+                  >
+                    <item.icon className="h-5 w-5" style={{ color: '#111827' }} />
+                    <span style={{ color: '#111827' }}>{item.title}</span>
+                  </NavLink>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
