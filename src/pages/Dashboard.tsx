@@ -4,9 +4,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sparkles, TrendingUp, Clock, Zap, Search, MessageSquare, Mail, User } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { useMutation } from "@tanstack/react-query";
 
 interface Lead {
   id: string;
@@ -29,6 +32,14 @@ const Dashboard = () => {
   const [whisperCards, setWhisperCards] = useState<WhisperCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Message composition state
+  const [smsDialogOpen, setSmsDialogOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [smsMessage, setSmsMessage] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
 
   useEffect(() => {
     loadDashboardData();
@@ -76,6 +87,79 @@ const Dashboard = () => {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     toast.success("Signed out successfully");
+  };
+
+  const sendEmailMutation = useMutation({
+    mutationFn: async ({ leadId, subject, message }: { leadId: string; subject: string; message: string }) => {
+      const { data, error } = await supabase.functions.invoke('send-email', {
+        body: { leadId, subject, message }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Email sent successfully!");
+      setEmailDialogOpen(false);
+      setEmailSubject("");
+      setEmailMessage("");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to send email");
+    }
+  });
+
+  const sendSmsMutation = useMutation({
+    mutationFn: async ({ leadId, message }: { leadId: string; message: string }) => {
+      const { data, error } = await supabase.functions.invoke('send-sms', {
+        body: { leadId, message }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("SMS sent successfully!");
+      setSmsDialogOpen(false);
+      setSmsMessage("");
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to send SMS");
+    }
+  });
+
+  const handleOpenSmsDialog = (lead: Lead) => {
+    setSelectedLead(lead);
+    setSmsMessage(`Hi ${lead.full_name.split(' ')[0]}, `);
+    setSmsDialogOpen(true);
+  };
+
+  const handleOpenEmailDialog = (lead: Lead) => {
+    setSelectedLead(lead);
+    setEmailSubject("Following up on your inquiry");
+    setEmailMessage(`Hi ${lead.full_name.split(' ')[0]},\n\n`);
+    setEmailDialogOpen(true);
+  };
+
+  const handleSendEmail = () => {
+    if (!selectedLead || !emailSubject || !emailMessage) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+    sendEmailMutation.mutate({ 
+      leadId: selectedLead.id, 
+      subject: emailSubject, 
+      message: emailMessage 
+    });
+  };
+
+  const handleSendSms = () => {
+    if (!selectedLead || !smsMessage) {
+      toast.error("Please enter a message");
+      return;
+    }
+    sendSmsMutation.mutate({ 
+      leadId: selectedLead.id, 
+      message: smsMessage 
+    });
   };
 
   const getUrgencyColor = (urgency: string) => {
@@ -225,11 +309,19 @@ const Dashboard = () => {
                         )}
                       </div>
                       <div className="flex flex-col gap-2">
-                        <Button size="sm" variant="default">
+                        <Button 
+                          size="sm" 
+                          variant="default"
+                          onClick={() => handleOpenSmsDialog(card.lead)}
+                        >
                           <MessageSquare className="h-4 w-4 mr-2" />
                           Send SMS
                         </Button>
-                        <Button size="sm" variant="outline">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleOpenEmailDialog(card.lead)}
+                        >
                           <Mail className="h-4 w-4 mr-2" />
                           Send Email
                         </Button>
@@ -242,6 +334,84 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* SMS Dialog */}
+      <Dialog open={smsDialogOpen} onOpenChange={setSmsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send SMS to {selectedLead?.full_name}</DialogTitle>
+            <DialogDescription>
+              Compose your text message below
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Textarea
+              placeholder="Enter your message..."
+              value={smsMessage}
+              onChange={(e) => setSmsMessage(e.target.value)}
+              rows={6}
+              className="resize-none"
+            />
+            <p className="text-xs text-muted-foreground">
+              Character count: {smsMessage.length} (SMS segments: {Math.ceil(smsMessage.length / 160)})
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSmsDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSendSms}
+              disabled={sendSmsMutation.isPending}
+            >
+              {sendSmsMutation.isPending ? "Sending..." : "Send SMS"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Send Email to {selectedLead?.full_name}</DialogTitle>
+            <DialogDescription>
+              Compose your email below
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Subject</label>
+              <Input
+                placeholder="Email subject..."
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Message</label>
+              <Textarea
+                placeholder="Enter your email message..."
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                rows={12}
+                className="resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSendEmail}
+              disabled={sendEmailMutation.isPending}
+            >
+              {sendEmailMutation.isPending ? "Sending..." : "Send Email"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
