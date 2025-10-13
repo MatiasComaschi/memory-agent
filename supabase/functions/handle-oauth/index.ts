@@ -79,7 +79,7 @@ serve(async (req) => {
 });
 
 async function exchangeGoogleToken(code: string) {
-  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientId = Deno.env.get("ClientID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
   const redirectUri = `${Deno.env.get("SITE_URL")}/auth/callback`;
 
