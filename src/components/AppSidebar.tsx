@@ -24,14 +24,9 @@ const menuItems = [
 ];
 
 export function AppSidebar() {
-  const getNavCls = ({ isActive }: { isActive: boolean }) =>
-    isActive
-      ? "bg-accent text-accent-foreground font-medium"
-      : "text-foreground hover:bg-accent/50 hover:text-accent-foreground";
-
   return (
-    <Sidebar collapsible="icon" className="border-r bg-sidebar">
-      <SidebarContent className="bg-sidebar">
+    <Sidebar collapsible="icon" className="border-r">
+      <SidebarContent>
         {/* Logo */}
         <div className="p-4 flex items-center gap-2 border-b">
           <div className="h-8 w-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow shrink-0">
@@ -48,9 +43,18 @@ export function AppSidebar() {
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild tooltip={item.title}>
-                    <NavLink to={item.url} className={getNavCls}>
-                      <item.icon className="text-current" />
-                      <span className="text-current">{item.title}</span>
+                    <NavLink
+                      to={item.url}
+                      className={({ isActive }) =>
+                        `flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                          isActive
+                            ? "bg-accent text-accent-foreground font-medium"
+                            : "text-gray-700 hover:bg-accent/50 hover:text-accent-foreground"
+                        }`
+                      }
+                    >
+                      <item.icon className="h-5 w-5" />
+                      <span>{item.title}</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
