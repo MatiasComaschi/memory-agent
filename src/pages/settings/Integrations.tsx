@@ -6,7 +6,9 @@ import { Mail, MessageSquare, Users2, Sparkles, MapPin } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { initiateGmailOAuth } from "@/lib/googleOAuth";
+import { initiateGmailOAuth, initiateMicrosoft365OAuth } from "@/lib/googleOAuth";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const integrations = [
   {
@@ -95,6 +97,8 @@ const integrations = [
 const Integrations = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [apiKeyDialog, setApiKeyDialog] = useState<{ provider: string; name: string } | null>(null);
+  const [apiKey, setApiKey] = useState("");
 
   const { data: connectedIntegrations } = useQuery({
     queryKey: ["integrations"],
@@ -109,14 +113,18 @@ const Integrations = () => {
   });
 
   const connectMutation = useMutation({
-    mutationFn: async (provider: string) => {
+    mutationFn: async ({ provider, apiKey }: { provider: string; apiKey?: string }) => {
       if (provider === "gmail") {
-        // Initiate custom Gmail OAuth flow
         initiateGmailOAuth();
         return;
       }
 
-      // For other providers, just create a placeholder record
+      if (provider === "microsoft365") {
+        initiateMicrosoft365OAuth();
+        return;
+      }
+
+      // For API key based services
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
@@ -131,6 +139,8 @@ const Integrations = () => {
       const { error } = await supabase.from("integrations").insert({
         org_id: profile.org_id,
         provider,
+        access_token: apiKey || null,
+        metadata: apiKey ? { api_key: apiKey } : {},
       });
 
       if (error) throw error;
@@ -180,6 +190,32 @@ const Integrations = () => {
     return connectedIntegrations?.includes(provider);
   };
 
+  const handleConnect = (integration: any) => {
+    if (isConnected(integration.provider)) {
+      disconnectMutation.mutate(integration.provider);
+    } else {
+      // Check if requires API key
+      if (!integration.requiresOAuth && ["twilio", "openai", "googlemaps"].includes(integration.provider)) {
+        setApiKeyDialog({ provider: integration.provider, name: integration.name });
+        setApiKey("");
+      } else if (integration.requiresOAuth && !["gmail", "microsoft365"].includes(integration.provider)) {
+        toast({
+          title: "Coming soon",
+          description: `${integration.name} OAuth integration will be available soon. Contact support for early access.`,
+        });
+      } else {
+        connectMutation.mutate({ provider: integration.provider });
+      }
+    }
+  };
+
+  const handleApiKeySubmit = () => {
+    if (!apiKeyDialog || !apiKey.trim()) return;
+    connectMutation.mutate({ provider: apiKeyDialog.provider, apiKey: apiKey.trim() });
+    setApiKeyDialog(null);
+    setApiKey("");
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -221,13 +257,7 @@ const Integrations = () => {
                   <Button
                     variant={isConnected(integration.provider) ? "outline" : "default"}
                     className="w-full"
-                    onClick={() => {
-                      if (isConnected(integration.provider)) {
-                        disconnectMutation.mutate(integration.provider);
-                      } else {
-                        connectMutation.mutate(integration.provider);
-                      }
-                    }}
+                    onClick={() => handleConnect(integration)}
                   >
                     {isConnected(integration.provider) ? "Disconnect" : "Connect"}
                   </Button>
@@ -237,6 +267,28 @@ const Integrations = () => {
           </div>
         </div>
       ))}
+
+      <Dialog open={!!apiKeyDialog} onOpenChange={() => setApiKeyDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Connect {apiKeyDialog?.name}</DialogTitle>
+            <DialogDescription>
+              Enter your API key to connect {apiKeyDialog?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              placeholder="API Key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              type="password"
+            />
+            <Button onClick={handleApiKeySubmit} className="w-full">
+              Connect
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

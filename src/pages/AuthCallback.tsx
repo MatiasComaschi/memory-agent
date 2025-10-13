@@ -14,18 +14,18 @@ const AuthCallback = () => {
       const code = params.get("code");
       const state = params.get("state");
 
-      if (code && state === "gmail_integration") {
+      if (code && (state === "gmail_integration" || state === "microsoft365_integration")) {
         try {
-          // Send code to edge function to exchange for tokens
-          const { error } = await supabase.functions.invoke("handle-gmail-oauth", {
-            body: { code, state },
+          const provider = state === "gmail_integration" ? "gmail" : "microsoft365";
+          const { error } = await supabase.functions.invoke("handle-oauth", {
+            body: { code, provider },
           });
 
           if (error) throw error;
 
           toast({
-            title: "Gmail connected",
-            description: "Your Gmail account has been successfully connected.",
+            title: `${provider === "gmail" ? "Gmail" : "Microsoft 365"} connected`,
+            description: `Your ${provider === "gmail" ? "Gmail" : "Microsoft 365"} account has been successfully connected.`,
           });
 
           navigate("/settings/integrations");
@@ -38,7 +38,6 @@ const AuthCallback = () => {
           navigate("/settings/integrations");
         }
       } else {
-        // Regular Supabase OAuth callback
         navigate("/dashboard");
       }
     };
