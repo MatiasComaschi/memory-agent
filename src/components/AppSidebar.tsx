@@ -30,14 +30,14 @@ export function AppSidebar() {
       : "hover:bg-accent/50";
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon" className="border-r">
       <SidebarContent>
         {/* Logo */}
         <div className="p-4 flex items-center gap-2 border-b">
-          <div className="h-8 w-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow">
+          <div className="h-8 w-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow shrink-0">
             <Sparkles className="h-4 w-4 text-white" />
           </div>
-          <h1 className="text-lg font-bold bg-gradient-primary bg-clip-text text-transparent">
+          <h1 className="text-lg font-bold bg-gradient-primary bg-clip-text text-transparent group-data-[collapsible=icon]:hidden">
             EchoLead
           </h1>
         </div>
@@ -47,7 +47,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                  <SidebarMenuButton asChild tooltip={item.title}>
                     <NavLink to={item.url} className={getNavCls}>
                       <item.icon />
                       <span>{item.title}</span>
