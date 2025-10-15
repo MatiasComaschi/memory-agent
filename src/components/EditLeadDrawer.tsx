@@ -558,14 +558,14 @@ export function EditLeadDrawer({
             <div>
               <Label htmlFor="assigned_agent_id">Assigned Agent</Label>
               <Select
-                value={formData.assigned_agent_id || ""}
-                onValueChange={(value) => updateField("assigned_agent_id", value || null)}
+                value={formData.assigned_agent_id || "unassigned"}
+                onValueChange={(value) => updateField("assigned_agent_id", value === "unassigned" ? null : value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select agent" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Unassigned</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
                   {agents.map((agent) => (
                     <SelectItem key={agent.id} value={agent.id}>
                       {agent.full_name || agent.email}
