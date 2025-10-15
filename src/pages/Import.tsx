@@ -21,6 +21,7 @@ import {
   extractContactFromNotes,
   FIELD_ALIASES,
 } from "@/lib/importMapping";
+import { isNonEmptyRow, hasAtLeastOneContact, normalizePhone, RowIssue } from "@/lib/importValidation";
 import { EditableCell } from "@/components/import/EditableCell";
 import { ColumnFillPopover } from "@/components/import/ColumnFillPopover";
 
@@ -47,6 +48,7 @@ interface LeadRow {
 interface LeadRowWithMeta extends LeadRow {
   __id?: string;
   __isNew?: boolean;
+  __sourceRow?: number;
 }
 
 interface ValidationError {
@@ -75,6 +77,12 @@ const Import = () => {
   const [showOnlyIssues, setShowOnlyIssues] = useState(false);
   const [focusedCell, setFocusedCell] = useState<{ row: number; field: string } | null>(null);
   const [mappingDialogOpen, setMappingDialogOpen] = useState(false);
+  const [importResults, setImportResults] = useState<{
+    imported: number;
+    skippedEmpty: number;
+    failedCount: number;
+    failedRows: { rowNumber: number; reason: string }[];
+  } | null>(null);
   
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -84,13 +92,17 @@ const Import = () => {
 
   const targetFields = Object.keys(FIELD_ALIASES);
 
-  const validateMappedRow = (row: any, index: number): ValidationError[] => {
+  const validateMappedRow = (row: any, index: number, sourceRow?: number): ValidationError[] => {
     const rowErrors: ValidationError[] = [];
+    const displayRow = sourceRow ?? (index + 1);
+
+    // Skip completely empty rows
+    if (!isNonEmptyRow(row)) return rowErrors;
 
     // Required: full_name
-    if (!row.full_name) {
+    if (!row.full_name || !String(row.full_name).trim()) {
       rowErrors.push({ 
-        row: index + 1, 
+        row: displayRow, 
         field: "full_name", 
         message: "Full name is required",
         severity: "error"
@@ -98,24 +110,14 @@ const Import = () => {
     }
 
     // Required: email OR phone
-    const hasEmail = row.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email);
-    const hasPhone = row.phone && row.phone.length > 0;
+    const contactOk = hasAtLeastOneContact(row.email || "", row.phone || "");
     
-    if (!hasEmail && !hasPhone) {
+    if (!contactOk) {
       rowErrors.push({ 
-        row: index + 1, 
+        row: displayRow, 
         field: "email/phone", 
-        message: "At least one valid email or phone is required",
+        message: "Need a valid email or phone",
         severity: "error"
-      });
-    }
-
-    if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
-      rowErrors.push({ 
-        row: index + 1, 
-        field: "email", 
-        message: "Invalid email format",
-        severity: "warning"
       });
     }
 
@@ -209,7 +211,7 @@ const Import = () => {
     if (!validateMapping()) return;
 
     // Transform raw data using mapping
-    const transformed = rawData.map((rawRow) => {
+    const transformed = rawData.map((rawRow, i) => {
       const mappedRow: any = {};
       
       targetFields.forEach((targetField) => {
@@ -238,13 +240,16 @@ const Import = () => {
         }
       }
 
+      // Track original CSV row number (line 1 = header, so first data row = line 2)
+      mappedRow.__sourceRow = i + 2;
+
       return mappedRow;
     });
 
-    // Validate transformed data
+    // Validate transformed data (only non-empty rows)
     const allErrors: ValidationError[] = [];
     transformed.forEach((row, index) => {
-      const rowErrors = validateMappedRow(row, index);
+      const rowErrors = validateMappedRow(row, index, row.__sourceRow);
       allErrors.push(...rowErrors);
     });
 
@@ -427,10 +432,10 @@ const Import = () => {
     setTransformedData([...tableData]);
     setOriginalData(JSON.parse(JSON.stringify(tableData)));
     
-    // Re-validate
+    // Re-validate (only non-empty rows)
     const allErrors: ValidationError[] = [];
     tableData.forEach((row, index) => {
-      const rowErrors = validateMappedRow(row, index);
+      const rowErrors = validateMappedRow(row, index, (row as LeadRowWithMeta).__sourceRow);
       allErrors.push(...rowErrors);
     });
     setErrors(allErrors);
@@ -492,20 +497,9 @@ const Import = () => {
   const handleImport = async () => {
     setLoading(true);
 
-    // Use tableData (edited values) instead of transformedData
-    const dataToImport = editing ? tableData : transformedData;
-
-    // Strip meta fields before import
-    const cleanedData = dataToImport.map(({ __id, __isNew, ...rest }: any) => rest);
-
-    // Filter out rows with critical errors
-    const criticalErrors = errors.filter(e => e.severity === "error");
-    const invalidRowNumbers = new Set(criticalErrors.map(e => e.row));
-    const validData = cleanedData.filter((_, idx) => !invalidRowNumbers.has(idx + 1));
-
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      if (!user) throw new Error("You need to sign in first.");
 
       const { data: profile } = await supabase
         .from("profiles")
@@ -513,103 +507,142 @@ const Import = () => {
         .eq("id", user.id)
         .single();
 
-      if (!profile?.org_id) throw new Error("Organization not found");
+      if (!profile?.org_id) throw new Error("We couldn't find your organization.");
 
-      // Batch insert leads in chunks of 500
-      const BATCH_SIZE = 500;
-      const successfulLeads: any[] = [];
-      const failedRows: { row: number; reason: string }[] = [];
+      // Use tableData (includes edits)
+      const rows = tableData as LeadRowWithMeta[];
+      
+      // 1) Split: empty rows vs rows with data
+      const emptyRows = rows.filter(r => !isNonEmptyRow(r));
+      const candidateRows = rows.filter(r => isNonEmptyRow(r));
 
-      for (let i = 0; i < validData.length; i += BATCH_SIZE) {
-        const batch = validData.slice(i, i + BATCH_SIZE);
-        const leadsToInsert = batch.map((row) => ({
+      // 2) Validate candidates: only keep rows with name + (email or phone)
+      const validRows: LeadRowWithMeta[] = [];
+      const failed: { rowNumber: number; reason: string }[] = [];
+
+      for (const r of candidateRows) {
+        const nameOk = !!String(r.full_name || "").trim();
+        const contactOk = hasAtLeastOneContact(r.email || "", r.phone || "");
+        
+        if (!nameOk || !contactOk) {
+          failed.push({
+            rowNumber: r.__sourceRow ?? (rows.indexOf(r) + 1),
+            reason: !nameOk
+              ? "Missing full name"
+              : "Missing valid email or phone",
+          });
+          continue;
+        }
+        
+        // Normalize phone
+        const phone = normalizePhone(r.phone || "");
+        validRows.push({ ...r, phone: phone || r.phone });
+      }
+
+      // 3) Bulk insert leads in chunks
+      const chunkSize = 300;
+      let successCount = 0;
+
+      for (let i = 0; i < validRows.length; i += chunkSize) {
+        const chunk = validRows.slice(i, i + chunkSize);
+
+        const payload = chunk.map((row) => ({
           org_id: profile.org_id,
-          full_name: row.full_name,
-          email: row.email || null,
+          full_name: String(row.full_name).trim(),
+          email: row.email?.trim() || null,
           phone: row.phone || null,
-          zip: row.zip || null,
-          city: row.city || null,
-          budget_min: row.budget_min,
-          budget_max: row.budget_max,
-          beds: row.beds,
-          baths: row.baths,
-          notes: row.notes || null,
+          zip: row.zip?.trim() || null,
+          city: row.city?.trim() || null,
+          budget_min: row.budget_min ? Number(String(row.budget_min).replace(/[$,]/g, "")) : null,
+          budget_max: row.budget_max ? Number(String(row.budget_max).replace(/[$,]/g, "")) : null,
+          beds: row.beds ? Number(row.beds) : null,
+          baths: row.baths ? Number(row.baths) : null,
+          notes: row.notes?.trim() || null,
           source: "Import" as any,
         }));
 
-        try {
-          const { data: insertedLeads, error: leadError } = await supabase
-            .from("leads")
-            .insert(leadsToInsert)
-            .select();
+        const { data: inserted, error } = await supabase
+          .from("leads")
+          .insert(payload)
+          .select("id");
 
-          if (leadError) {
-            // Record batch failure
-            batch.forEach((_, idx) => {
-              failedRows.push({
-                row: i + idx + 1,
-                reason: leadError.message,
-              });
+        if (error) {
+          // Record chunk failures
+          for (const r of chunk) {
+            failed.push({
+              rowNumber: r.__sourceRow ?? (rows.indexOf(r) + 1),
+              reason: error.message || "Insert failed",
             });
-          } else if (insertedLeads) {
-            successfulLeads.push(...insertedLeads);
           }
-        } catch (err) {
-          batch.forEach((_, idx) => {
-            failedRows.push({
-              row: i + idx + 1,
-              reason: err instanceof Error ? err.message : "Unknown error",
-            });
+          continue;
+        }
+
+        successCount += inserted?.length || 0;
+
+        // 4) Add interactions for inserted leads
+        if (inserted && inserted.length > 0) {
+          const interactions = inserted.map((lead, idx) => {
+            const originalRow = chunk[idx];
+            const timestamp = originalRow?.last_contact_date || new Date().toISOString();
+            
+            return {
+              lead_id: lead.id,
+              channel: "note" as const,
+              direction: "inbound" as const,
+              subject: "CSV Import",
+              body: "Imported via CSV upload",
+              ts: timestamp,
+              user_id: user.id,
+            };
           });
+
+          await supabase.from("interactions").insert(interactions);
         }
       }
 
-      // Batch insert interactions
-      if (successfulLeads.length > 0) {
-        const interactionsToInsert = successfulLeads.map((lead, idx) => {
-          const originalRow = validData[idx];
-          const timestamp = originalRow?.last_contact_date || new Date().toISOString();
-          
-          return {
-            lead_id: lead.id,
-            channel: "note" as const,
-            direction: "inbound" as const,
-            subject: "CSV Import",
-            body: "Imported via CSV upload",
-            ts: timestamp,
-            user_id: user.id,
-          };
-        });
+      const skippedEmpty = emptyRows.length;
+      const failedCount = failed.length;
 
-        // Insert interactions in batches
-        for (let i = 0; i < interactionsToInsert.length; i += BATCH_SIZE) {
-          const batch = interactionsToInsert.slice(i, i + BATCH_SIZE);
-          await supabase.from("interactions").insert(batch);
-        }
-      }
-
-      const successCount = successfulLeads.length;
-      const skippedCount = invalidRowNumbers.size;
-      const failCount = failedRows.length;
+      // 5) Show results
+      setImportResults({
+        imported: successCount,
+        skippedEmpty,
+        failedCount,
+        failedRows: failed,
+      });
 
       toast({
-        title: "Import complete",
-        description: `Successfully imported ${successCount} leads.${skippedCount > 0 ? ` ${skippedCount} skipped (invalid).` : ""}${failCount > 0 ? ` ${failCount} failed.` : ""}`,
+        title: "Import finished",
+        description: `Imported ${successCount}. Skipped ${skippedEmpty} empty rows.${failedCount > 0 ? ` ${failedCount} failed.` : ""}`,
       });
 
       if (successCount > 0) {
         setTimeout(() => navigate("/leads"), 1500);
       }
-    } catch (error) {
-      console.error("Import error:", error);
+    } catch (e: any) {
       toast({
         title: "Import failed",
-        description: error instanceof Error ? error.message : "An error occurred during import",
+        description: e?.message ?? "Something went wrong while importing.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
+  };
+
+  const downloadFailuresCsv = () => {
+    if (!importResults?.failedRows?.length) return;
+    const header = "row_number,reason\n";
+    const lines = importResults.failedRows
+      .map(r => `${r.rowNumber},"${r.reason.replace(/"/g, '""')}"`)
+      .join("\n");
+    const blob = new Blob([header + lines], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "import_failures.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleExportErrors = () => {
@@ -821,6 +854,31 @@ const Import = () => {
       {/* Step 3: Preview & Import */}
       {step === "preview" && (
         <>
+          {importResults && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Import Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="flex items-center gap-6">
+                <div>
+                  Imported: <strong>{importResults.imported}</strong>
+                </div>
+                <div>
+                  Skipped empty: <strong>{importResults.skippedEmpty}</strong>
+                </div>
+                <div>
+                  Failed: <strong>{importResults.failedCount}</strong>
+                </div>
+                {importResults.failedCount > 0 && (
+                  <Button variant="outline" size="sm" onClick={downloadFailuresCsv}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download failures CSV
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {criticalErrors.length > 0 && (
             <Alert variant="destructive" className="mb-6">
               <XCircle className="h-4 w-4" />
@@ -857,7 +915,7 @@ const Import = () => {
                     <ul className="list-disc list-inside mt-2 max-h-60 overflow-y-auto">
                       {criticalErrors.map((err, idx) => (
                         <li key={idx} className="text-sm">
-                          Row {err.row}, {err.field}: {err.message}
+                          Row {err.row}: {err.message}
                         </li>
                       ))}
                     </ul>
