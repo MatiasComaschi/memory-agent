@@ -609,9 +609,19 @@ const Import = () => {
   const dataToDisplay = editing ? tableData : transformedData;
   const validLeadsCount = dataToDisplay.filter((_, idx) => !invalidRowNumbers.has(idx + 1)).length;
   
+  // Filter to only show rows with actual data
+  const rowsWithData = dataToDisplay.filter(row =>
+    Object.values(row).some(
+      val => val !== null && val !== undefined && String(val).trim() !== ""
+    )
+  );
+  
   const displayRows = showOnlyIssues
-    ? dataToDisplay.filter((_, idx) => invalidRowNumbers.has(idx + 1) || rowErrors[idx])
-    : dataToDisplay;
+    ? rowsWithData.filter((_, idx) => {
+        const originalIdx = dataToDisplay.indexOf(rowsWithData[idx]);
+        return invalidRowNumbers.has(originalIdx + 1) || rowErrors[originalIdx];
+      })
+    : rowsWithData;
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
