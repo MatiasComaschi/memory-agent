@@ -30,6 +30,25 @@ interface RawRow {
   [key: string]: string;
 }
 
+interface LeadRow {
+  full_name: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  zip?: string;
+  budget_min?: number | string;
+  budget_max?: number | string;
+  beds?: number | string;
+  baths?: number | string;
+  notes?: string;
+  last_contact_date?: string;
+}
+
+interface LeadRowWithMeta extends LeadRow {
+  __id?: string;
+  __isNew?: boolean;
+}
+
 interface ValidationError {
   row: number;
   field: string;
@@ -440,7 +459,7 @@ const Import = () => {
   };
 
   const handleAddRow = () => {
-    const newRow = {
+    const newRow: LeadRowWithMeta = {
       full_name: "",
       email: "",
       phone: "",
@@ -452,6 +471,8 @@ const Import = () => {
       baths: "",
       notes: "",
       last_contact_date: "",
+      __id: crypto.randomUUID(),
+      __isNew: true,
     };
     
     setTableData(prev => [...prev, newRow]);
@@ -474,10 +495,13 @@ const Import = () => {
     // Use tableData (edited values) instead of transformedData
     const dataToImport = editing ? tableData : transformedData;
 
+    // Strip meta fields before import
+    const cleanedData = dataToImport.map(({ __id, __isNew, ...rest }: any) => rest);
+
     // Filter out rows with critical errors
     const criticalErrors = errors.filter(e => e.severity === "error");
     const invalidRowNumbers = new Set(criticalErrors.map(e => e.row));
-    const validData = dataToImport.filter((_, idx) => !invalidRowNumbers.has(idx + 1));
+    const validData = cleanedData.filter((_, idx) => !invalidRowNumbers.has(idx + 1));
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -609,19 +633,32 @@ const Import = () => {
   const dataToDisplay = editing ? tableData : transformedData;
   const validLeadsCount = dataToDisplay.filter((_, idx) => !invalidRowNumbers.has(idx + 1)).length;
   
-  // Filter to only show rows with actual data
-  const rowsWithData = dataToDisplay.filter(row =>
-    Object.values(row).some(
-      val => val !== null && val !== undefined && String(val).trim() !== ""
-    )
-  );
+  // Helper to check if row has any value
+  const hasAnyValue = (row: LeadRowWithMeta): boolean => {
+    const keys: (keyof LeadRow)[] = [
+      "full_name", "email", "phone", "city", "zip",
+      "budget_min", "budget_max", "beds", "baths",
+      "last_contact_date", "notes"
+    ];
+    return keys.some(k => {
+      const v = (row as any)[k];
+      return v !== null && v !== undefined && String(v).trim() !== "";
+    });
+  };
   
+  // Keep original index for editing/validation wiring
+  const indexed = dataToDisplay.map((row, idx) => ({ 
+    row: row as LeadRowWithMeta, 
+    idx 
+  }));
+  
+  // Filter to keep rows with data OR new rows
+  const filtered = indexed.filter(({ row }) => row.__isNew || hasAnyValue(row));
+  
+  // Apply "show only issues" filter
   const displayRows = showOnlyIssues
-    ? rowsWithData.filter((_, idx) => {
-        const originalIdx = dataToDisplay.indexOf(rowsWithData[idx]);
-        return invalidRowNumbers.has(originalIdx + 1) || rowErrors[originalIdx];
-      })
-    : rowsWithData;
+    ? filtered.filter(({ idx }) => (rowErrors[idx]?.length ?? 0) > 0 || invalidRowNumbers.has(idx + 1))
+    : filtered;
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
@@ -1035,16 +1072,17 @@ const Import = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {displayRows.map((row, idx) => {
-                      const actualIdx = showOnlyIssues 
-                        ? dataToDisplay.findIndex(r => r === row)
-                        : idx;
-                      
+                    {displayRows.map(({ row, idx: actualIdx }) => {
                       return (
                         <TableRow 
-                          key={actualIdx}
+                          key={row.__id ?? actualIdx}
                         >
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "full_name")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "full_name")}
+                            data-cell="full_name"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.full_name}
                               field="full_name"
@@ -1057,7 +1095,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "full_name"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "email")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "email")}
+                            data-cell="email"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.email}
                               field="email"
@@ -1070,7 +1113,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "email"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "phone")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "phone")}
+                            data-cell="phone"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.phone}
                               field="phone"
@@ -1083,7 +1131,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "phone"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "city")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "city")}
+                            data-cell="city"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.city}
                               field="city"
@@ -1095,7 +1148,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "city"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "zip")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "zip")}
+                            data-cell="zip"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.zip}
                               field="zip"
@@ -1108,7 +1166,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "zip"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "budget_min")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "budget_min")}
+                            data-cell="budget_min"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.budget_min}
                               field="budget_min"
@@ -1120,7 +1183,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "budget_min"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "budget_max")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "budget_max")}
+                            data-cell="budget_max"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.budget_max}
                               field="budget_max"
@@ -1132,7 +1200,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "budget_max"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "beds")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "beds")}
+                            data-cell="beds"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.beds}
                               field="beds"
@@ -1144,7 +1217,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "beds"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "baths")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "baths")}
+                            data-cell="baths"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.baths}
                               field="baths"
@@ -1156,7 +1234,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "baths"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "notes")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "notes")}
+                            data-cell="notes"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.notes}
                               field="notes"
@@ -1168,7 +1251,12 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "notes"}
                             />
                           </TableCell>
-                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "last_contact_date")}>
+                          <TableCell 
+                            className="align-top" 
+                            onPaste={(e) => editing && handlePaste(e, actualIdx, "last_contact_date")}
+                            data-cell="last_contact_date"
+                            data-row-id={row.__id}
+                          >
                             <EditableCell
                               value={row.last_contact_date}
                               field="last_contact_date"
@@ -1199,12 +1287,6 @@ const Import = () => {
               {displayRows.length === 0 && showOnlyIssues && (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   No rows with issues found
-                </p>
-              )}
-              
-              {!showOnlyIssues && dataToDisplay.length > displayRows.length && (
-                <p className="text-sm text-muted-foreground mt-4 text-center">
-                  Showing {displayRows.length} of {dataToDisplay.length} rows
                 </p>
               )}
             </CardContent>
