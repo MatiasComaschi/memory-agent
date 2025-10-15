@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          entity: string
+          entity_id: string | null
+          id: string
+          meta: Json | null
+          org_id: string
+          ts: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          entity: string
+          entity_id?: string | null
+          id?: string
+          meta?: Json | null
+          org_id: string
+          ts?: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          entity?: string
+          entity_id?: string | null
+          id?: string
+          meta?: Json | null
+          org_id?: string
+          ts?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_logs: {
         Row: {
           campaign_id: string
@@ -344,11 +385,13 @@ export type Database = {
           full_name: string
           id: string
           notes: string | null
+          opt_out: boolean | null
           org_id: string
           phone: string | null
           source: Database["public"]["Enums"]["lead_source"] | null
           stage: Database["public"]["Enums"]["lead_stage"] | null
           tags: Json | null
+          timezone: string | null
           updated_at: string | null
           zip: string | null
         }
@@ -364,11 +407,13 @@ export type Database = {
           full_name: string
           id?: string
           notes?: string | null
+          opt_out?: boolean | null
           org_id: string
           phone?: string | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           stage?: Database["public"]["Enums"]["lead_stage"] | null
           tags?: Json | null
+          timezone?: string | null
           updated_at?: string | null
           zip?: string | null
         }
@@ -384,11 +429,13 @@ export type Database = {
           full_name?: string
           id?: string
           notes?: string | null
+          opt_out?: boolean | null
           org_id?: string
           phone?: string | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           stage?: Database["public"]["Enums"]["lead_stage"] | null
           tags?: Json | null
+          timezone?: string | null
           updated_at?: string | null
           zip?: string | null
         }
@@ -471,6 +518,47 @@ export type Database = {
           },
         ]
       }
+      message_templates: {
+        Row: {
+          channel: string
+          created_at: string
+          fallback_copy: string | null
+          id: string
+          llm_prompt: string
+          name: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          fallback_copy?: string | null
+          id?: string
+          llm_prompt: string
+          name: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          fallback_copy?: string | null
+          id?: string
+          llm_prompt?: string
+          name?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_templates_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orgs: {
         Row: {
           created_at: string | null
@@ -529,6 +617,54 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "profiles_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      triggers: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          kind: string
+          lead_id: string | null
+          org_id: string
+          params: Json | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          kind: string
+          lead_id?: string | null
+          org_id: string
+          params?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          kind?: string
+          lead_id?: string | null
+          org_id?: string
+          params?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "triggers_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "triggers_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "orgs"
