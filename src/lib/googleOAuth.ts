@@ -1,7 +1,8 @@
 export const initiateGmailOAuth = () => {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  const redirectUri = `${window.location.origin}/auth/callback`;
-  const scope = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly";
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const redirectUri = `${supabaseUrl}/functions/v1/handle-gmail-oauth`;
+  const scope = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify";
   
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
     client_id: clientId,

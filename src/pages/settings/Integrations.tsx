@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { initiateGmailOAuth, initiateMicrosoft365OAuth } from "@/lib/googleOAuth";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useSearchParams } from "react-router-dom";
 
 const integrations = [
   {
@@ -97,8 +98,80 @@ const integrations = [
 const Integrations = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [apiKeyDialog, setApiKeyDialog] = useState<{ provider: string; name: string } | null>(null);
   const [apiKey, setApiKey] = useState("");
+
+  // Handle OAuth callback from Gmail
+  useEffect(() => {
+    const gmailStatus = searchParams.get("gmail");
+    const tempToken = searchParams.get("temp_token");
+    const error = searchParams.get("error");
+
+    if (error) {
+      toast({
+        title: "Connection failed",
+        description: error,
+        variant: "destructive",
+      });
+      // Clear error from URL
+      searchParams.delete("error");
+      setSearchParams(searchParams);
+      return;
+    }
+
+    if (gmailStatus === "connected" && tempToken) {
+      // Complete the integration by storing tokens with the user's org_id
+      const completeGmailIntegration = async () => {
+        try {
+          const tokenData = JSON.parse(atob(tempToken));
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) throw new Error("Not authenticated");
+
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("org_id")
+            .eq("id", user.id)
+            .single();
+
+          if (!profile?.org_id) throw new Error("Organization not found");
+
+          const { error: insertError } = await supabase.from("integrations").upsert({
+            org_id: profile.org_id,
+            provider: "gmail",
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            token_expires_at: tokenData.token_expires_at,
+            metadata: { scope: tokenData.scope },
+          }, {
+            onConflict: "org_id,provider",
+          });
+
+          if (insertError) throw insertError;
+
+          toast({
+            title: "Gmail connected",
+            description: "Your Gmail account has been successfully connected.",
+          });
+
+          queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        } catch (error: any) {
+          toast({
+            title: "Error",
+            description: error.message,
+            variant: "destructive",
+          });
+        } finally {
+          // Clear params from URL
+          searchParams.delete("gmail");
+          searchParams.delete("temp_token");
+          setSearchParams(searchParams);
+        }
+      };
+
+      completeGmailIntegration();
+    }
+  }, [searchParams, setSearchParams, toast, queryClient]);
 
   const { data: connectedIntegrations } = useQuery({
     queryKey: ["integrations"],

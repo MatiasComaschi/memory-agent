@@ -71,3 +71,62 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Gmail OAuth Setup
+
+To enable Gmail integration for sending emails, you need to configure OAuth credentials in Google Cloud Console:
+
+### Step 1: Enable Gmail API
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Select your project or create a new one
+3. Navigate to "APIs & Services" > "Library"
+4. Search for "Gmail API" and click "Enable"
+
+### Step 2: Configure OAuth Consent Screen
+1. Go to "APIs & Services" > "OAuth consent screen"
+2. Select **External** user type (unless you have a Google Workspace)
+3. Fill in the required fields:
+   - App name: Your app name
+   - User support email: Your email
+   - Developer contact information: Your email
+4. Click "Save and Continue"
+5. **Add Test Users**: Click "Add Users" and add the Gmail addresses that will be used for testing (including your own)
+6. Skip the "Scopes" section for now
+7. Click "Save and Continue" through the remaining steps
+
+### Step 3: Create OAuth Client ID
+1. Go to "APIs & Services" > "Credentials"
+2. Click "Create Credentials" > "OAuth client ID"
+3. Select "Web application" as the application type
+4. Configure the following:
+   - **Name**: Your app name (e.g., "EchoLead Gmail Integration")
+   - **Authorized JavaScript origins**: Add your Lovable domain
+     - `https://your-project-id.lovable.app`
+     - `https://lovable.dev` (if using preview)
+   - **Authorized redirect URIs**: Add the exact edge function URL
+     - `https://izazjxvjxgtduiyojxbu.supabase.co/functions/v1/handle-gmail-oauth`
+5. Click "Create"
+6. Copy the **Client ID** and **Client Secret**
+
+### Step 4: Configure Secrets in Lovable Cloud
+1. In your Lovable project, the following secrets are already configured:
+   - `ClientID` - Your Google OAuth Client ID
+   - `GOOGLE_CLIENT_SECRET` - Your Google OAuth Client Secret
+2. If you need to update them, ask the Lovable AI to help you update these secrets
+
+### Step 5: Add Environment Variable to Frontend
+1. The `VITE_GOOGLE_CLIENT_ID` should be set in your frontend `.env` file (this is a publishable key, so it's safe to commit)
+2. This should match the `ClientID` secret value
+
+### Important Notes
+- While your app is in "Testing" mode, only test users you've explicitly added can authenticate
+- The Gmail API has daily quotas - see [Gmail API Usage Limits](https://developers.google.com/gmail/api/reference/quota)
+- For production, you'll need to verify your app with Google (submit for verification in the OAuth consent screen)
+- The redirect URI must exactly match what's configured in Google Cloud Console
+
+### Testing the Integration
+1. Go to Settings > Integrations in your app
+2. Click "Connect" on the Gmail integration
+3. You'll be redirected to Google to authorize access
+4. After authorization, you'll be redirected back to your app
+5. The integration should show as "Connected" with a green badge

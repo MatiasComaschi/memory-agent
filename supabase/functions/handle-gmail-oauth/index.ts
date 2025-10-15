@@ -12,12 +12,26 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const url = new URL(req.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const error = url.searchParams.get("error");
 
-    const { code, state } = await req.json();
+    console.log("Gmail OAuth callback received", { code: !!code, state, error });
+
+    // Handle OAuth errors
+    if (error) {
+      const siteUrl = Deno.env.get("SITE_URL");
+      return Response.redirect(
+        `${siteUrl}/settings/integrations?error=${encodeURIComponent(error)}`,
+        302
+      );
+    }
+
+    // Validate state
+    if (state !== "gmail_integration") {
+      throw new Error("Invalid state parameter");
+    }
 
     if (!code) {
       throw new Error("No authorization code provided");
@@ -31,79 +45,92 @@ serve(async (req) => {
       },
       body: new URLSearchParams({
         code,
-        client_id: Deno.env.get("GOOGLE_CLIENT_ID") ?? "",
+        client_id: Deno.env.get("ClientID") ?? "",
         client_secret: Deno.env.get("GOOGLE_CLIENT_SECRET") ?? "",
         redirect_uri: `${Deno.env.get("SUPABASE_URL")}/functions/v1/handle-gmail-oauth`,
         grant_type: "authorization_code",
       }),
     });
 
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error("Token exchange failed:", errorText);
+      throw new Error(`Token exchange failed: ${errorText}`);
+    }
+
     const tokens = await tokenResponse.json();
+    console.log("Tokens received", { 
+      hasAccessToken: !!tokens.access_token, 
+      hasRefreshToken: !!tokens.refresh_token,
+      scope: tokens.scope 
+    });
 
     if (!tokens.access_token) {
       throw new Error("Failed to obtain access token");
     }
 
-    // Get user from authorization header
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      throw new Error("No authorization header");
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-
-    if (userError || !user) {
-      throw new Error("User not authenticated");
-    }
-
-    // Get user's org_id
-    const { data: profile } = await supabaseClient
-      .from("profiles")
-      .select("org_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.org_id) {
-      throw new Error("Organization not found");
-    }
-
-    // Store tokens in integrations table
-    const { error: insertError } = await supabaseClient
-      .from("integrations")
-      .upsert({
-        org_id: profile.org_id,
-        provider: "gmail",
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-        metadata: {
-          scope: tokens.scope,
-        },
-      }, {
-        onConflict: "org_id,provider",
-      });
-
-    if (insertError) {
-      throw insertError;
-    }
-
-    return new Response(
-      JSON.stringify({ success: true }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      }
+    // Create Supabase client with service role key for database operations
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
+
+    // Get session from cookie or create anonymous session for now
+    // In production, you'd want to implement proper session handling
+    // For now, we'll store it temporarily and let the frontend pick it up
+    const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+
+    // Store tokens temporarily - frontend will complete the connection
+    // This is a workaround since we can't easily access the user's session here
+    const tempData = {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      token_expires_at: tokenExpiresAt,
+      scope: tokens.scope,
+    };
+
+    console.log("Tokens stored, testing Gmail send...");
+
+    // Test Gmail send with a simple API call
+    try {
+      const testResponse = await fetch(
+        "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+        {
+          headers: {
+            Authorization: `Bearer ${tokens.access_token}`,
+          },
+        }
+      );
+
+      if (testResponse.ok) {
+        const profile = await testResponse.json();
+        console.log("Gmail API test successful:", profile.emailAddress);
+      } else {
+        console.warn("Gmail API test failed:", await testResponse.text());
+      }
+    } catch (testError) {
+      console.error("Gmail test error:", testError);
+    }
+
+    // Redirect back to the app with success and token data in URL
+    // Frontend will pick this up and complete the integration
+    const siteUrl = Deno.env.get("SITE_URL");
+    const redirectUrl = new URL(`${siteUrl}/settings/integrations`);
+    redirectUrl.searchParams.set("gmail", "connected");
+    redirectUrl.searchParams.set("temp_token", btoa(JSON.stringify(tempData)));
+
+    console.log("Redirecting to:", redirectUrl.toString().split("?")[0]);
+
+    return Response.redirect(redirectUrl.toString(), 302);
   } catch (error) {
     console.error("Error handling Gmail OAuth:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      }
+    
+    // Redirect to settings with error
+    const siteUrl = Deno.env.get("SITE_URL");
+    return Response.redirect(
+      `${siteUrl}/settings/integrations?error=${encodeURIComponent(errorMessage)}`,
+      302
     );
   }
 });
