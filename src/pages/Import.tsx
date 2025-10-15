@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, CheckCircle, XCircle, ArrowLeft, Download, AlertTriangle, ChevronDown, ChevronUp, Edit, Save, X, Settings } from "lucide-react";
+import { Upload, CheckCircle, XCircle, ArrowLeft, Download, AlertTriangle, ChevronDown, ChevronUp, Edit, Save, X, Settings, Plus } from "lucide-react";
 import {
   autoMapHeaders,
   coerceValue,
@@ -437,6 +437,35 @@ const Import = () => {
     } else {
       setEditing(true);
     }
+  };
+
+  const handleAddRow = () => {
+    const newRow = {
+      full_name: "",
+      email: "",
+      phone: "",
+      city: "",
+      zip: "",
+      budget_min: "",
+      budget_max: "",
+      beds: "",
+      baths: "",
+      notes: "",
+      last_contact_date: "",
+    };
+    
+    setTableData(prev => [...prev, newRow]);
+    
+    // Focus the first cell of the new row
+    setTimeout(() => {
+      const newRowIndex = tableData.length;
+      setFocusedCell({ row: newRowIndex, field: "full_name" });
+      
+      // Scroll to bottom
+      if (tableContainerRef.current) {
+        tableContainerRef.current.scrollTop = tableContainerRef.current.scrollHeight;
+      }
+    }, 50);
   };
 
   const handleImport = async () => {
@@ -1007,7 +1036,7 @@ const Import = () => {
                           key={actualIdx} 
                           className={hasError ? "bg-red-50 dark:bg-red-950/10" : ""}
                         >
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "full_name")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "full_name")}>
                             <EditableCell
                               value={row.full_name}
                               field="full_name"
@@ -1020,7 +1049,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "full_name"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "email")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "email")}>
                             <EditableCell
                               value={row.email}
                               field="email"
@@ -1033,7 +1062,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "email"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "phone")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "phone")}>
                             <EditableCell
                               value={row.phone}
                               field="phone"
@@ -1046,7 +1075,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "phone"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "city")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "city")}>
                             <EditableCell
                               value={row.city}
                               field="city"
@@ -1058,7 +1087,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "city"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "zip")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "zip")}>
                             <EditableCell
                               value={row.zip}
                               field="zip"
@@ -1071,7 +1100,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "zip"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "budget_min")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "budget_min")}>
                             <EditableCell
                               value={row.budget_min}
                               field="budget_min"
@@ -1083,7 +1112,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "budget_min"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "budget_max")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "budget_max")}>
                             <EditableCell
                               value={row.budget_max}
                               field="budget_max"
@@ -1095,7 +1124,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "budget_max"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "beds")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "beds")}>
                             <EditableCell
                               value={row.beds}
                               field="beds"
@@ -1107,7 +1136,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "beds"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "baths")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "baths")}>
                             <EditableCell
                               value={row.baths}
                               field="baths"
@@ -1119,7 +1148,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "baths"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "notes")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "notes")}>
                             <EditableCell
                               value={row.notes}
                               field="notes"
@@ -1131,7 +1160,7 @@ const Import = () => {
                               isFocused={focusedCell?.row === actualIdx && focusedCell?.field === "notes"}
                             />
                           </TableCell>
-                          <TableCell onPaste={(e) => editing && handlePaste(e, actualIdx, "last_contact_date")}>
+                          <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "last_contact_date")}>
                             <EditableCell
                               value={row.last_contact_date}
                               field="last_contact_date"
@@ -1149,6 +1178,15 @@ const Import = () => {
                   </TableBody>
                 </Table>
               </div>
+              
+              {editing && (
+                <div className="flex justify-center mt-4">
+                  <Button variant="outline" size="sm" onClick={handleAddRow}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add someone else
+                  </Button>
+                </div>
+              )}
               
               {displayRows.length === 0 && showOnlyIssues && (
                 <p className="text-sm text-muted-foreground text-center py-8">

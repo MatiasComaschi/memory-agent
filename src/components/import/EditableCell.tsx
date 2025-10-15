@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, memo } from "react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { AlertCircle } from "lucide-react";
 
 interface EditableCellProps {
   value: any;
@@ -15,6 +15,19 @@ interface EditableCellProps {
   isFocused?: boolean;
 }
 
+// Helper to calculate character width
+const calcChWidth = (value: string, minCh = 4, maxCh = 20): string => {
+  const length = value?.toString().length || 0;
+  return `${Math.min(Math.max(length, minCh), maxCh)}ch`;
+};
+
+// Helper to auto-size textarea
+const autosizeTextArea = (el: HTMLTextAreaElement) => {
+  el.style.height = "0px";
+  const scrollHeight = el.scrollHeight;
+  el.style.height = scrollHeight + "px";
+};
+
 export const EditableCell = memo(({
   value,
   field,
@@ -27,25 +40,42 @@ export const EditableCell = memo(({
   isFocused = false,
 }: EditableCellProps) => {
   const [localValue, setLocalValue] = useState(value ?? "");
+  const [isFocusedState, setIsFocusedState] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setLocalValue(value ?? "");
   }, [value]);
 
   useEffect(() => {
-    if (isFocused && inputRef.current) {
-      inputRef.current.focus();
+    if (isFocused) {
+      if (inputRef.current) inputRef.current.focus();
+      if (textareaRef.current) textareaRef.current.focus();
     }
   }, [isFocused]);
 
+  useEffect(() => {
+    if (textareaRef.current) {
+      autosizeTextArea(textareaRef.current);
+    }
+  }, [localValue]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    const isTextarea = field === "notes" || (localValue?.toString().length || 0) > 20 || isFocusedState;
+    
+    // For textarea, allow Enter for newlines, Ctrl+Enter to navigate
+    if (isTextarea && e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+      return; // Allow newline
+    }
+    
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey || !isTextarea)) {
       e.preventDefault();
-      onNavigate("down");
-    } else if (e.key === "Enter" && e.shiftKey) {
-      e.preventDefault();
-      onNavigate("up");
+      if (e.shiftKey) {
+        onNavigate("up");
+      } else {
+        onNavigate("down");
+      }
     } else if (e.key === "Tab" && !e.shiftKey) {
       e.preventDefault();
       onNavigate("right");
@@ -67,44 +97,66 @@ export const EditableCell = memo(({
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     setLocalValue(newValue);
     onChange(rowIndex, field, newValue);
   };
 
   const handleBlur = () => {
+    setIsFocusedState(false);
     onBlur(rowIndex, field);
+  };
+
+  const handleFocus = () => {
+    setIsFocusedState(true);
   };
 
   if (!isEditing) {
     const displayValue = value ?? "";
     return (
-      <span className="text-sm">
+      <span className="text-sm break-words">
         {displayValue || <span className="text-muted-foreground">—</span>}
       </span>
     );
   }
 
   const hasError = !!error;
-  const isEmpty = !value || value.toString().trim() === "";
+  const valueLength = (localValue?.toString().length || 0);
+  const shouldUseTextarea = field === "notes" || valueLength > 20 || isFocusedState;
+  const width = calcChWidth(localValue?.toString() || "", 4, 20);
 
   return (
     <TooltipProvider>
       <Tooltip open={hasError && isFocused}>
         <TooltipTrigger asChild>
-          <div className="relative">
-            <Input
-              ref={inputRef}
-              value={localValue}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-              onBlur={handleBlur}
-              className={`h-8 text-sm ${hasError ? "border-red-500" : ""}`}
-              placeholder={field === "zip" ? "12345" : ""}
-            />
-            {isEmpty && !hasError && (
-              <AlertCircle className="absolute right-2 top-2 h-4 w-4 text-amber-500 opacity-50" />
+          <div className="align-top break-words whitespace-normal">
+            {shouldUseTextarea ? (
+              <Textarea
+                ref={textareaRef}
+                value={localValue}
+                onChange={handleChange}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+                onFocus={handleFocus}
+                className={`text-sm resize-none overflow-hidden leading-5 min-h-[2rem] py-1.5 ${
+                  hasError ? "border-red-500" : ""
+                }`}
+                style={{ width: "20ch", maxWidth: "20ch" }}
+                placeholder={field === "zip" ? "12345" : ""}
+              />
+            ) : (
+              <Input
+                ref={inputRef}
+                value={localValue}
+                onChange={handleChange}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+                onFocus={handleFocus}
+                className={`h-8 text-sm truncate ${hasError ? "border-red-500" : ""}`}
+                style={{ width }}
+                placeholder={field === "zip" ? "12345" : ""}
+              />
             )}
           </div>
         </TooltipTrigger>
