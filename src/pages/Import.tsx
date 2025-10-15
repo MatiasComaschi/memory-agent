@@ -5,67 +5,81 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, CheckCircle, XCircle, ArrowLeft } from "lucide-react";
+import { Upload, CheckCircle, XCircle, ArrowLeft, Download, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  autoMapHeaders,
+  coerceValue,
+  generateTemplateCSV,
+  normalizeFullName,
+  extractContactFromNotes,
+  FIELD_ALIASES,
+} from "@/lib/importMapping";
 
-interface LeadRow {
-  full_name: string;
-  email?: string;
-  phone?: string;
-  zip?: string;
-  city?: string;
-  budget_min?: string;
-  budget_max?: string;
-  beds?: string;
-  baths?: string;
-  last_contact_date?: string;
-  notes?: string;
+type Step = "upload" | "mapping" | "preview";
+
+interface RawRow {
+  [key: string]: string;
 }
 
 interface ValidationError {
   row: number;
   field: string;
   message: string;
+  severity: "error" | "warning";
 }
 
 const Import = () => {
+  const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
-  const [parsedData, setParsedData] = useState<LeadRow[]>([]);
+  const [sourceHeaders, setSourceHeaders] = useState<string[]>([]);
+  const [rawData, setRawData] = useState<RawRow[]>([]);
+  const [columnMapping, setColumnMapping] = useState<Record<string, string | null>>({});
+  const [transformedData, setTransformedData] = useState<any[]>([]);
   const [errors, setErrors] = useState<ValidationError[]>([]);
+  const [showAllErrors, setShowAllErrors] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const validateRow = (row: LeadRow, index: number): ValidationError[] => {
+  const targetFields = Object.keys(FIELD_ALIASES);
+
+  const validateMappedRow = (row: any, index: number): ValidationError[] => {
     const rowErrors: ValidationError[] = [];
 
-    if (!row.full_name?.trim()) {
-      rowErrors.push({ row: index + 1, field: "full_name", message: "Full name is required" });
+    // Required: full_name
+    if (!row.full_name) {
+      rowErrors.push({ 
+        row: index + 1, 
+        field: "full_name", 
+        message: "Full name is required",
+        severity: "error"
+      });
+    }
+
+    // Required: email OR phone
+    const hasEmail = row.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email);
+    const hasPhone = row.phone && row.phone.length > 0;
+    
+    if (!hasEmail && !hasPhone) {
+      rowErrors.push({ 
+        row: index + 1, 
+        field: "email/phone", 
+        message: "At least one valid email or phone is required",
+        severity: "error"
+      });
     }
 
     if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
-      rowErrors.push({ row: index + 1, field: "email", message: "Invalid email format" });
-    }
-
-    if (row.phone && !/^\+?[\d\s-()]+$/.test(row.phone)) {
-      rowErrors.push({ row: index + 1, field: "phone", message: "Invalid phone format" });
-    }
-
-    if (row.budget_min && isNaN(Number(row.budget_min))) {
-      rowErrors.push({ row: index + 1, field: "budget_min", message: "Budget min must be a number" });
-    }
-
-    if (row.budget_max && isNaN(Number(row.budget_max))) {
-      rowErrors.push({ row: index + 1, field: "budget_max", message: "Budget max must be a number" });
-    }
-
-    if (row.beds && isNaN(Number(row.beds))) {
-      rowErrors.push({ row: index + 1, field: "beds", message: "Beds must be a number" });
-    }
-
-    if (row.baths && isNaN(Number(row.baths))) {
-      rowErrors.push({ row: index + 1, field: "baths", message: "Baths must be a number" });
+      rowErrors.push({ 
+        row: index + 1, 
+        field: "email", 
+        message: "Invalid email format",
+        severity: "warning"
+      });
     }
 
     return rowErrors;
@@ -77,27 +91,31 @@ const Import = () => {
 
     setFile(uploadedFile);
     setErrors([]);
+    setRawData([]);
+    setTransformedData([]);
 
-    Papa.parse<LeadRow>(uploadedFile, {
+    Papa.parse<RawRow>(uploadedFile, {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        const allErrors: ValidationError[] = [];
-        results.data.forEach((row, index) => {
-          const rowErrors = validateRow(row, index);
-          allErrors.push(...rowErrors);
-        });
-
-        setParsedData(results.data);
-        setErrors(allErrors);
-
         if (results.data.length === 0) {
           toast({
             title: "Empty file",
             description: "The CSV file contains no data rows.",
             variant: "destructive",
           });
+          return;
         }
+
+        const headers = results.meta.fields || [];
+        setSourceHeaders(headers);
+        setRawData(results.data);
+
+        // Auto-map headers
+        const autoMapping = autoMapHeaders(headers);
+        setColumnMapping(autoMapping);
+
+        setStep("mapping");
       },
       error: (error) => {
         toast({
@@ -109,11 +127,101 @@ const Import = () => {
     });
   };
 
+  const handleDownloadTemplate = () => {
+    const csv = generateTemplateCSV();
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "leads_template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleMappingChange = (targetField: string, sourceHeader: string | null) => {
+    setColumnMapping(prev => ({
+      ...prev,
+      [targetField]: sourceHeader === "(Ignore)" ? null : sourceHeader,
+    }));
+  };
+
+  const validateMapping = (): boolean => {
+    // Check required fields
+    if (!columnMapping.full_name) {
+      toast({
+        title: "Missing required mapping",
+        description: "Full Name must be mapped to a column",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (!columnMapping.email && !columnMapping.phone) {
+      toast({
+        title: "Missing required mapping",
+        description: "At least one of Email or Phone must be mapped",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleContinueToPreview = () => {
+    if (!validateMapping()) return;
+
+    // Transform raw data using mapping
+    const transformed = rawData.map((rawRow) => {
+      const mappedRow: any = {};
+      
+      targetFields.forEach((targetField) => {
+        const sourceHeader = columnMapping[targetField];
+        if (sourceHeader) {
+          const rawValue = rawRow[sourceHeader];
+          let coercedValue = coerceValue(targetField, rawValue);
+          
+          // Apply heuristics
+          if (targetField === "full_name" && coercedValue) {
+            coercedValue = normalizeFullName(coercedValue);
+          }
+          
+          mappedRow[targetField] = coercedValue;
+        }
+      });
+
+      // Extract email/phone from notes if not present
+      if (mappedRow.notes) {
+        const extracted = extractContactFromNotes(mappedRow.notes);
+        if (!mappedRow.email && extracted.email) {
+          mappedRow.email = extracted.email;
+        }
+        if (!mappedRow.phone && extracted.phone) {
+          mappedRow.phone = extracted.phone;
+        }
+      }
+
+      return mappedRow;
+    });
+
+    // Validate transformed data
+    const allErrors: ValidationError[] = [];
+    transformed.forEach((row, index) => {
+      const rowErrors = validateMappedRow(row, index);
+      allErrors.push(...rowErrors);
+    });
+
+    setTransformedData(transformed);
+    setErrors(allErrors);
+    setStep("preview");
+  };
+
   const handleImport = async () => {
-    if (errors.length > 0) {
+    const criticalErrors = errors.filter(e => e.severity === "error");
+    if (criticalErrors.length > 0) {
       toast({
         title: "Validation errors",
-        description: "Please fix all validation errors before importing.",
+        description: `${criticalErrors.length} critical errors must be fixed before importing.`,
         variant: "destructive",
       });
       return;
@@ -122,7 +230,6 @@ const Import = () => {
     setLoading(true);
 
     try {
-      // Get user's org_id
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
@@ -134,58 +241,85 @@ const Import = () => {
 
       if (!profile?.org_id) throw new Error("Organization not found");
 
-      let successCount = 0;
-      let failCount = 0;
+      // Batch insert leads in chunks of 500
+      const BATCH_SIZE = 500;
+      const successfulLeads: any[] = [];
+      const failedRows: { row: number; reason: string }[] = [];
 
-      for (const row of parsedData) {
+      for (let i = 0; i < transformedData.length; i += BATCH_SIZE) {
+        const batch = transformedData.slice(i, i + BATCH_SIZE);
+        const leadsToInsert = batch.map((row) => ({
+          org_id: profile.org_id,
+          full_name: row.full_name,
+          email: row.email || null,
+          phone: row.phone || null,
+          zip: row.zip || null,
+          city: row.city || null,
+          budget_min: row.budget_min,
+          budget_max: row.budget_max,
+          beds: row.beds,
+          baths: row.baths,
+          notes: row.notes || null,
+          source: "Import" as any,
+        }));
+
         try {
-          // Insert lead
-          const { data: lead, error: leadError } = await supabase
+          const { data: insertedLeads, error: leadError } = await supabase
             .from("leads")
-            .insert([{
-              org_id: profile.org_id,
-              full_name: row.full_name.trim(),
-              email: row.email?.trim() || null,
-              phone: row.phone?.trim() || null,
-              zip: row.zip?.trim() || null,
-              city: row.city?.trim() || null,
-              budget_min: row.budget_min ? Number(row.budget_min) : null,
-              budget_max: row.budget_max ? Number(row.budget_max) : null,
-              beds: row.beds ? Number(row.beds) : null,
-              baths: row.baths ? Number(row.baths) : null,
-              notes: row.notes?.trim() || null,
-              source: "Import" as any,
-            }])
-            .select()
-            .single();
+            .insert(leadsToInsert)
+            .select();
 
-          if (leadError) throw leadError;
-
-          // Create interaction record
-          const interactionTimestamp = row.last_contact_date 
-            ? new Date(row.last_contact_date).toISOString()
-            : new Date().toISOString();
-
-          await supabase.from("interactions").insert({
-            lead_id: lead.id,
-            channel: "note",
-            direction: "inbound",
-            subject: "CSV Import",
-            body: "Imported via CSV upload",
-            ts: interactionTimestamp,
-            user_id: user.id,
-          });
-
-          successCount++;
+          if (leadError) {
+            // Record batch failure
+            batch.forEach((_, idx) => {
+              failedRows.push({
+                row: i + idx + 1,
+                reason: leadError.message,
+              });
+            });
+          } else if (insertedLeads) {
+            successfulLeads.push(...insertedLeads);
+          }
         } catch (err) {
-          console.error("Error importing lead:", err);
-          failCount++;
+          batch.forEach((_, idx) => {
+            failedRows.push({
+              row: i + idx + 1,
+              reason: err instanceof Error ? err.message : "Unknown error",
+            });
+          });
         }
       }
 
+      // Batch insert interactions
+      if (successfulLeads.length > 0) {
+        const interactionsToInsert = successfulLeads.map((lead, idx) => {
+          const originalRow = transformedData[idx];
+          const timestamp = originalRow?.last_contact_date || new Date().toISOString();
+          
+          return {
+            lead_id: lead.id,
+            channel: "note" as const,
+            direction: "inbound" as const,
+            subject: "CSV Import",
+            body: "Imported via CSV upload",
+            ts: timestamp,
+            user_id: user.id,
+          };
+        });
+
+        // Insert interactions in batches
+        for (let i = 0; i < interactionsToInsert.length; i += BATCH_SIZE) {
+          const batch = interactionsToInsert.slice(i, i + BATCH_SIZE);
+          await supabase.from("interactions").insert(batch);
+        }
+      }
+
+      const successCount = successfulLeads.length;
+      const failCount = failedRows.length;
+
       toast({
         title: "Import complete",
-        description: `Successfully imported ${successCount} leads. ${failCount > 0 ? `${failCount} failed.` : ""}`,
+        description: `Successfully imported ${successCount} leads.${failCount > 0 ? ` ${failCount} failed.` : ""}`,
       });
 
       if (successCount > 0) {
@@ -203,6 +337,24 @@ const Import = () => {
     }
   };
 
+  const handleExportErrors = () => {
+    const errorCsv = [
+      "Row,Field,Message,Severity",
+      ...errors.map(e => `${e.row},${e.field},"${e.message}",${e.severity}`)
+    ].join("\n");
+    
+    const blob = new Blob([errorCsv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "import_errors.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const criticalErrors = errors.filter(e => e.severity === "error");
+  const warningErrors = errors.filter(e => e.severity === "warning");
+
   return (
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="mb-6">
@@ -212,63 +364,219 @@ const Import = () => {
         </Button>
         <h1 className="text-3xl font-bold">Import Leads</h1>
         <p className="text-muted-foreground mt-2">
-          Upload a CSV file with lead data to bulk import into your system
+          Upload and map CSV data to bulk import leads
         </p>
       </div>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Upload CSV File</CardTitle>
-          <CardDescription>
-            Required headers: full_name, email, phone, zip, city, budget_min, budget_max, beds, baths, last_contact_date, notes
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <input
-              type="file"
-              accept=".csv"
-              onChange={handleFileUpload}
-              className="hidden"
-              id="csv-upload"
-            />
-            <label htmlFor="csv-upload">
-              <Button variant="outline" asChild>
-                <span>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Choose File
-                </span>
-              </Button>
-            </label>
-            {file && <span className="text-sm text-muted-foreground">{file.name}</span>}
+      {/* Step Indicator */}
+      <div className="mb-6 flex items-center justify-center gap-4">
+        <div className={`flex items-center gap-2 ${step === "upload" ? "font-bold" : "text-muted-foreground"}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step === "upload" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+            1
           </div>
-        </CardContent>
-      </Card>
+          <span>Upload</span>
+        </div>
+        <div className="w-12 h-px bg-border" />
+        <div className={`flex items-center gap-2 ${step === "mapping" ? "font-bold" : "text-muted-foreground"}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step === "mapping" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+            2
+          </div>
+          <span>Map Columns</span>
+        </div>
+        <div className="w-12 h-px bg-border" />
+        <div className={`flex items-center gap-2 ${step === "preview" ? "font-bold" : "text-muted-foreground"}`}>
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${step === "preview" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+            3
+          </div>
+          <span>Preview & Import</span>
+        </div>
+      </div>
 
-      {errors.length > 0 && (
-        <Alert variant="destructive" className="mb-6">
-          <XCircle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Validation Errors:</strong>
-            <ul className="list-disc list-inside mt-2">
-              {errors.slice(0, 10).map((err, idx) => (
-                <li key={idx}>
-                  Row {err.row}, {err.field}: {err.message}
-                </li>
-              ))}
-              {errors.length > 10 && <li>...and {errors.length - 10} more errors</li>}
-            </ul>
-          </AlertDescription>
-        </Alert>
+      {/* Step 1: Upload */}
+      {step === "upload" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Upload CSV File</CardTitle>
+            <CardDescription>
+              Upload any CSV with lead data. We'll help you map the columns in the next step.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-4">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="csv-upload"
+              />
+              <label htmlFor="csv-upload">
+                <Button variant="outline" asChild>
+                  <span>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Choose File
+                  </span>
+                </Button>
+              </label>
+              {file && <span className="text-sm text-muted-foreground">{file.name}</span>}
+            </div>
+            
+            <div className="pt-4 border-t">
+              <p className="text-sm text-muted-foreground mb-2">
+                Don't have a CSV? Download our template to get started:
+              </p>
+              <Button variant="ghost" size="sm" onClick={handleDownloadTemplate}>
+                <Download className="mr-2 h-4 w-4" />
+                Download CSV Template
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {parsedData.length > 0 && (
+      {/* Step 2: Column Mapping */}
+      {step === "mapping" && (
         <>
           <Card className="mb-6">
             <CardHeader>
+              <CardTitle>Map Your Columns</CardTitle>
+              <CardDescription>
+                We've auto-detected the column mapping. Review and adjust as needed.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {targetFields.map((targetField) => {
+                  const isRequired = targetField === "full_name" || targetField === "email" || targetField === "phone";
+                  const mappedHeader = columnMapping[targetField];
+
+                  return (
+                    <div key={targetField} className="flex items-center gap-4">
+                      <div className="w-1/3 flex items-center gap-2">
+                        <span className="font-medium capitalize">
+                          {targetField.replace(/_/g, " ")}
+                        </span>
+                        {isRequired && (
+                          <Badge variant="destructive" className="text-xs">
+                            Required
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="w-2/3">
+                        <Select
+                          value={mappedHeader || "(Ignore)"}
+                          onValueChange={(value) => handleMappingChange(targetField, value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="(Ignore)">(Ignore)</SelectItem>
+                            {sourceHeaders.map((header) => (
+                              <SelectItem key={header} value={header}>
+                                {header}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {(!columnMapping.full_name || (!columnMapping.email && !columnMapping.phone)) && (
+                <Alert variant="destructive" className="mt-6">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Missing required mappings:</strong>
+                    <ul className="list-disc list-inside mt-2">
+                      {!columnMapping.full_name && <li>Full Name is required</li>}
+                      {!columnMapping.email && !columnMapping.phone && (
+                        <li>At least one of Email or Phone is required</li>
+                      )}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-between">
+            <Button variant="outline" onClick={() => setStep("upload")}>
+              Back
+            </Button>
+            <Button onClick={handleContinueToPreview}>
+              Continue to Preview
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* Step 3: Preview & Import */}
+      {step === "preview" && (
+        <>
+          {criticalErrors.length > 0 && (
+            <Alert variant="destructive" className="mb-6">
+              <XCircle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <strong>{criticalErrors.length} Critical Errors Found</strong>
+                    <p className="text-sm mt-1">These must be fixed before importing.</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={handleExportErrors}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Errors
+                  </Button>
+                </div>
+                <div className="mt-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAllErrors(!showAllErrors)}
+                  >
+                    {showAllErrors ? (
+                      <>
+                        <ChevronUp className="mr-2 h-4 w-4" />
+                        Hide Errors
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="mr-2 h-4 w-4" />
+                        Show All Errors
+                      </>
+                    )}
+                  </Button>
+                  {showAllErrors && (
+                    <ul className="list-disc list-inside mt-2 max-h-60 overflow-y-auto">
+                      {criticalErrors.map((err, idx) => (
+                        <li key={idx} className="text-sm">
+                          Row {err.row}, {err.field}: {err.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {warningErrors.length > 0 && (
+            <Alert className="mb-6">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>{warningErrors.length} Warnings</strong>
+                <p className="text-sm mt-1">These won't block import but may need attention.</p>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <Card className="mb-6">
+            <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                <span>Preview ({parsedData.length} rows)</span>
-                {errors.length === 0 && (
+                <span>Preview ({transformedData.length} rows)</span>
+                {criticalErrors.length === 0 && (
                   <CheckCircle className="h-5 w-5 text-green-500" />
                 )}
               </CardTitle>
@@ -291,7 +599,7 @@ const Import = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {parsedData.slice(0, 50).map((row, idx) => (
+                    {transformedData.slice(0, 50).map((row, idx) => (
                       <TableRow key={idx}>
                         <TableCell>{row.full_name}</TableCell>
                         <TableCell>{row.email}</TableCell>
@@ -302,29 +610,33 @@ const Import = () => {
                         <TableCell>{row.budget_max}</TableCell>
                         <TableCell>{row.beds}</TableCell>
                         <TableCell>{row.baths}</TableCell>
-                        <TableCell>{row.last_contact_date}</TableCell>
+                        <TableCell>
+                          {row.last_contact_date 
+                            ? new Date(row.last_contact_date).toLocaleDateString()
+                            : "-"}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-                {parsedData.length > 50 && (
+                {transformedData.length > 50 && (
                   <p className="text-sm text-muted-foreground mt-4 text-center">
-                    Showing first 50 rows of {parsedData.length}
+                    Showing first 50 rows of {transformedData.length}
                   </p>
                 )}
               </div>
             </CardContent>
           </Card>
 
-          <div className="flex justify-end gap-4">
-            <Button variant="outline" onClick={() => navigate("/leads")}>
-              Cancel
+          <div className="flex justify-between">
+            <Button variant="outline" onClick={() => setStep("mapping")}>
+              Back to Mapping
             </Button>
             <Button
               onClick={handleImport}
-              disabled={errors.length > 0 || loading}
+              disabled={criticalErrors.length > 0 || loading}
             >
-              {loading ? "Importing..." : `Import ${parsedData.length} Leads`}
+              {loading ? "Importing..." : `Import ${transformedData.length} Leads`}
             </Button>
           </div>
         </>
