@@ -107,7 +107,7 @@ const Import = () => {
           return;
         }
 
-        const headers = results.meta.fields || [];
+        const headers = (results.meta.fields || []).filter(h => h && h.trim().length > 0);
         setSourceHeaders(headers);
         setRawData(results.data);
 
