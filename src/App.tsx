@@ -11,6 +11,7 @@ import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
 import Dashboard from "./pages/Dashboard";
 import Leads from "./pages/Leads";
+import Import from "./pages/Import";
 import Campaigns from "./pages/Campaigns";
 import Settings from "./pages/Settings";
 import Integrations from "./pages/settings/Integrations";
@@ -49,6 +50,7 @@ const App = () => (
           <Route element={<AuthGuard><AppLayout /></AuthGuard>}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/leads" element={<Leads />} />
+            <Route path="/import" element={<Import />} />
             <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/settings" element={<Settings />}>
               <Route index element={<Navigate to="/settings/integrations" replace />} />

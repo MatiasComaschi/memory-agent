@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import {
   Sparkles,
   Users,
+  Upload,
   Megaphone,
   Settings,
   LayoutDashboard,
@@ -18,6 +19,7 @@ import {
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Leads", url: "/leads", icon: Users },
+  { title: "Import", url: "/import", icon: Upload },
   { title: "Campaigns", url: "/campaigns", icon: Megaphone },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
