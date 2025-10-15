@@ -217,17 +217,12 @@ const Import = () => {
   };
 
   const handleImport = async () => {
-    const criticalErrors = errors.filter(e => e.severity === "error");
-    if (criticalErrors.length > 0) {
-      toast({
-        title: "Validation errors",
-        description: `${criticalErrors.length} critical errors must be fixed before importing.`,
-        variant: "destructive",
-      });
-      return;
-    }
-
     setLoading(true);
+
+    // Filter out rows with critical errors
+    const criticalErrors = errors.filter(e => e.severity === "error");
+    const invalidRowNumbers = new Set(criticalErrors.map(e => e.row));
+    const validData = transformedData.filter((_, idx) => !invalidRowNumbers.has(idx + 1));
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -246,8 +241,8 @@ const Import = () => {
       const successfulLeads: any[] = [];
       const failedRows: { row: number; reason: string }[] = [];
 
-      for (let i = 0; i < transformedData.length; i += BATCH_SIZE) {
-        const batch = transformedData.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < validData.length; i += BATCH_SIZE) {
+        const batch = validData.slice(i, i + BATCH_SIZE);
         const leadsToInsert = batch.map((row) => ({
           org_id: profile.org_id,
           full_name: row.full_name,
@@ -293,7 +288,7 @@ const Import = () => {
       // Batch insert interactions
       if (successfulLeads.length > 0) {
         const interactionsToInsert = successfulLeads.map((lead, idx) => {
-          const originalRow = transformedData[idx];
+          const originalRow = validData[idx];
           const timestamp = originalRow?.last_contact_date || new Date().toISOString();
           
           return {
@@ -315,11 +310,12 @@ const Import = () => {
       }
 
       const successCount = successfulLeads.length;
+      const skippedCount = invalidRowNumbers.size;
       const failCount = failedRows.length;
 
       toast({
         title: "Import complete",
-        description: `Successfully imported ${successCount} leads.${failCount > 0 ? ` ${failCount} failed.` : ""}`,
+        description: `Successfully imported ${successCount} leads.${skippedCount > 0 ? ` ${skippedCount} skipped (invalid).` : ""}${failCount > 0 ? ` ${failCount} failed.` : ""}`,
       });
 
       if (successCount > 0) {
@@ -354,6 +350,8 @@ const Import = () => {
 
   const criticalErrors = errors.filter(e => e.severity === "error");
   const warningErrors = errors.filter(e => e.severity === "warning");
+  const invalidRowNumbers = new Set(criticalErrors.map(e => e.row));
+  const validLeadsCount = transformedData.filter((_, idx) => !invalidRowNumbers.has(idx + 1)).length;
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
@@ -523,7 +521,7 @@ const Import = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <strong>{criticalErrors.length} Critical Errors Found</strong>
-                    <p className="text-sm mt-1">These must be fixed before importing.</p>
+                    <p className="text-sm mt-1">Rows with errors will be skipped. {validLeadsCount} valid leads will be imported.</p>
                   </div>
                   <Button variant="outline" size="sm" onClick={handleExportErrors}>
                     <Download className="mr-2 h-4 w-4" />
@@ -634,9 +632,9 @@ const Import = () => {
             </Button>
             <Button
               onClick={handleImport}
-              disabled={criticalErrors.length > 0 || loading}
+              disabled={validLeadsCount === 0 || loading}
             >
-              {loading ? "Importing..." : `Import ${transformedData.length} Leads`}
+              {loading ? "Importing..." : `Import ${validLeadsCount} Valid Lead${validLeadsCount !== 1 ? 's' : ''}${invalidRowNumbers.size > 0 ? ` (Skip ${invalidRowNumbers.size})` : ''}`}
             </Button>
           </div>
         </>
