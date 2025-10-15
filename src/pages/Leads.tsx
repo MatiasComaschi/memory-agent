@@ -28,11 +28,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Plus, Search, Filter, ArrowLeft, Upload, MapPin, MoreVertical, Trash2 } from "lucide-react";
+import { Sparkles, Plus, Search, Filter, ArrowLeft, Upload, MapPin, MoreVertical, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { useMutation } from "@tanstack/react-query";
 import { DeleteLeadModal } from "@/components/DeleteLeadModal";
+import { EditLeadDrawer } from "@/components/EditLeadDrawer";
 
 interface Lead {
   id: string;
@@ -61,6 +62,8 @@ const Leads = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<string | null>(null);
+  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
+  const [leadToEdit, setLeadToEdit] = useState<string | null>(null);
   const [newLead, setNewLead] = useState<{
     full_name: string;
     email: string;
@@ -277,6 +280,11 @@ const Leads = () => {
         reasonText,
       });
     }
+  };
+
+  const handleEditClick = (leadId: string) => {
+    setLeadToEdit(leadId);
+    setEditDrawerOpen(true);
   };
 
   const getStageColor = (stage: string) => {
@@ -508,6 +516,10 @@ const Leads = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEditClick(lead.id)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Lead
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'hubspot' })}>
                               <Upload className="h-4 w-4 mr-2" />
                               Sync to HubSpot
@@ -563,6 +575,15 @@ const Leads = () => {
         onConfirm={handleDeleteConfirm}
         isDeleting={deleteLeadMutation.isPending}
       />
+
+      {leadToEdit && (
+        <EditLeadDrawer
+          open={editDrawerOpen}
+          onOpenChange={setEditDrawerOpen}
+          leadId={leadToEdit}
+          onSuccess={loadLeads}
+        />
+      )}
     </div>
   );
 };

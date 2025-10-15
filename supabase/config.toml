@@ -38,3 +38,6 @@ verify_jwt = true
 
 [functions.log-lead-deletion]
 verify_jwt = true
+
+[functions.update-lead]
+verify_jwt = true

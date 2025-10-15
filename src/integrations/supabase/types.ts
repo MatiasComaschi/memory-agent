@@ -372,6 +372,58 @@ export type Database = {
           },
         ]
       }
+      lead_change_history: {
+        Row: {
+          changes: Json
+          created_at: string
+          id: string
+          lead_id: string
+          note: string | null
+          org_id: string
+          user_id: string | null
+        }
+        Insert: {
+          changes: Json
+          created_at?: string
+          id?: string
+          lead_id: string
+          note?: string | null
+          org_id: string
+          user_id?: string | null
+        }
+        Update: {
+          changes?: Json
+          created_at?: string
+          id?: string
+          lead_id?: string
+          note?: string | null
+          org_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_change_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_change_history_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_change_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_deletions: {
         Row: {
           ai_summary: string | null
@@ -435,75 +487,172 @@ export type Database = {
       }
       leads: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
+          assigned_agent_id: string | null
           assigned_user_id: string | null
           baths: number | null
           beds: number | null
           budget_max: number | null
           budget_min: number | null
           city: string | null
+          communication_notes: string | null
+          contact_preference: string | null
+          country: string | null
           created_at: string | null
+          custom_fields: Json | null
           deleted_at: string | null
+          do_not_contact: boolean | null
           email: string | null
+          financing_status: string | null
+          first_name: string | null
           full_name: string
+          has_garage: boolean | null
           id: string
+          last_contact_at: string | null
+          last_name: string | null
+          lender_name: string | null
+          min_lot_sqft: number | null
+          min_sqft: number | null
+          move_in_timeline: string | null
+          must_haves: string[] | null
+          neighborhoods: string[] | null
+          next_action: string | null
+          next_action_at: string | null
+          nice_to_haves: string[] | null
           notes: string | null
           opt_out: boolean | null
           org_id: string
           phone: string | null
+          postal_code: string | null
+          preapproved: boolean | null
+          property_types: string[] | null
+          showing_availability: string | null
           source: Database["public"]["Enums"]["lead_source"] | null
           stage: Database["public"]["Enums"]["lead_stage"] | null
+          state: string | null
           tags: Json | null
           timezone: string | null
           updated_at: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
           zip: string | null
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          assigned_agent_id?: string | null
           assigned_user_id?: string | null
           baths?: number | null
           beds?: number | null
           budget_max?: number | null
           budget_min?: number | null
           city?: string | null
+          communication_notes?: string | null
+          contact_preference?: string | null
+          country?: string | null
           created_at?: string | null
+          custom_fields?: Json | null
           deleted_at?: string | null
+          do_not_contact?: boolean | null
           email?: string | null
+          financing_status?: string | null
+          first_name?: string | null
           full_name: string
+          has_garage?: boolean | null
           id?: string
+          last_contact_at?: string | null
+          last_name?: string | null
+          lender_name?: string | null
+          min_lot_sqft?: number | null
+          min_sqft?: number | null
+          move_in_timeline?: string | null
+          must_haves?: string[] | null
+          neighborhoods?: string[] | null
+          next_action?: string | null
+          next_action_at?: string | null
+          nice_to_haves?: string[] | null
           notes?: string | null
           opt_out?: boolean | null
           org_id: string
           phone?: string | null
+          postal_code?: string | null
+          preapproved?: boolean | null
+          property_types?: string[] | null
+          showing_availability?: string | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           stage?: Database["public"]["Enums"]["lead_stage"] | null
+          state?: string | null
           tags?: Json | null
           timezone?: string | null
           updated_at?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
           zip?: string | null
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          assigned_agent_id?: string | null
           assigned_user_id?: string | null
           baths?: number | null
           beds?: number | null
           budget_max?: number | null
           budget_min?: number | null
           city?: string | null
+          communication_notes?: string | null
+          contact_preference?: string | null
+          country?: string | null
           created_at?: string | null
+          custom_fields?: Json | null
           deleted_at?: string | null
+          do_not_contact?: boolean | null
           email?: string | null
+          financing_status?: string | null
+          first_name?: string | null
           full_name?: string
+          has_garage?: boolean | null
           id?: string
+          last_contact_at?: string | null
+          last_name?: string | null
+          lender_name?: string | null
+          min_lot_sqft?: number | null
+          min_sqft?: number | null
+          move_in_timeline?: string | null
+          must_haves?: string[] | null
+          neighborhoods?: string[] | null
+          next_action?: string | null
+          next_action_at?: string | null
+          nice_to_haves?: string[] | null
           notes?: string | null
           opt_out?: boolean | null
           org_id?: string
           phone?: string | null
+          postal_code?: string | null
+          preapproved?: boolean | null
+          property_types?: string[] | null
+          showing_availability?: string | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           stage?: Database["public"]["Enums"]["lead_stage"] | null
+          state?: string | null
           tags?: Json | null
           timezone?: string | null
           updated_at?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
           zip?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "leads_assigned_agent_id_fkey"
+            columns: ["assigned_agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leads_org_id_fkey"
             columns: ["org_id"]
