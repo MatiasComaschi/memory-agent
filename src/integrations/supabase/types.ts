@@ -753,6 +753,7 @@ export type Database = {
         | "Referral"
         | "Manual"
         | "Unknown"
+        | "Import"
       lead_stage:
         | "New"
         | "Conversation"
@@ -917,6 +918,7 @@ export const Constants = {
         "Referral",
         "Manual",
         "Unknown",
+        "Import",
       ],
       lead_stage: [
         "New",

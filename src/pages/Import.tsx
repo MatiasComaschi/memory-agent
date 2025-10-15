@@ -557,7 +557,7 @@ const Import = () => {
             beds: (beds !== null && !isNaN(beds)) ? beds : null,
             baths: (baths !== null && !isNaN(baths)) ? baths : null,
             notes: row.notes?.trim() || null,
-            // Omit source to use DB default, or set to known enum value
+            source: "Import" as any,
           };
         });
 
