@@ -35,3 +35,6 @@ verify_jwt = true
 
 [functions.enrich-location]
 verify_jwt = true
+
+[functions.log-lead-deletion]
+verify_jwt = true

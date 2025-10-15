@@ -28,10 +28,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Plus, Search, Filter, ArrowLeft, Upload, MapPin, MoreVertical } from "lucide-react";
+import { Sparkles, Plus, Search, Filter, ArrowLeft, Upload, MapPin, MoreVertical, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { useMutation } from "@tanstack/react-query";
+import { DeleteLeadModal } from "@/components/DeleteLeadModal";
 
 interface Lead {
   id: string;
@@ -58,6 +59,8 @@ const Leads = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [stageFilter, setStageFilter] = useState<"all" | "New" | "Conversation" | "Nurture" | "Hot" | "Under_Contract" | "Closed" | "Lost">("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [leadToDelete, setLeadToDelete] = useState<string | null>(null);
   const [newLead, setNewLead] = useState<{
     full_name: string;
     email: string;
@@ -84,7 +87,11 @@ const Leads = () => {
 
   const loadLeads = async () => {
     try {
-      let query = supabase.from("leads").select("*").order("updated_at", { ascending: false });
+      let query = supabase
+        .from("leads")
+        .select("*")
+        .is("deleted_at", null)
+        .order("updated_at", { ascending: false });
 
       if (stageFilter !== "all") {
         query = query.eq("stage", stageFilter as any);
@@ -219,6 +226,58 @@ const Leads = () => {
       toast.error(error.message || "Failed to enrich location");
     }
   });
+
+  const deleteLeadMutation = useMutation({
+    mutationFn: async ({ leadId, reasonCode, reasonText }: { leadId: string; reasonCode: string; reasonText: string }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("org_id")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile) throw new Error("Profile not found");
+
+      const { data, error } = await supabase.functions.invoke('log-lead-deletion', {
+        body: {
+          lead_id: leadId,
+          reason_code: reasonCode,
+          reason_text: reasonText,
+          org_id: profile.org_id,
+          user_id: user.id,
+        }
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Lead deleted successfully");
+      setDeleteModalOpen(false);
+      setLeadToDelete(null);
+      loadLeads();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to delete lead");
+    }
+  });
+
+  const handleDeleteClick = (leadId: string) => {
+    setLeadToDelete(leadId);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteConfirm = (reasonCode: string, reasonText: string) => {
+    if (leadToDelete) {
+      deleteLeadMutation.mutate({
+        leadId: leadToDelete,
+        reasonCode,
+        reasonText,
+      });
+    }
+  };
 
   const getStageColor = (stage: string) => {
     switch (stage) {
@@ -465,6 +524,13 @@ const Leads = () => {
                               <MapPin className="h-4 w-4 mr-2" />
                               Enrich Location
                             </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleDeleteClick(lead.id)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Lead
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -490,6 +556,13 @@ const Leads = () => {
           </div>
         )}
       </div>
+
+      <DeleteLeadModal
+        open={deleteModalOpen}
+        onOpenChange={setDeleteModalOpen}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={deleteLeadMutation.isPending}
+      />
     </div>
   );
 };

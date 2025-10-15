@@ -372,6 +372,67 @@ export type Database = {
           },
         ]
       }
+      lead_deletions: {
+        Row: {
+          ai_summary: string | null
+          ai_topic: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          lead_snapshot: Json
+          org_id: string
+          reason_code: string
+          reason_text: string
+          user_id: string | null
+        }
+        Insert: {
+          ai_summary?: string | null
+          ai_topic?: string | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          lead_snapshot: Json
+          org_id: string
+          reason_code: string
+          reason_text: string
+          user_id?: string | null
+        }
+        Update: {
+          ai_summary?: string | null
+          ai_topic?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          lead_snapshot?: Json
+          org_id?: string
+          reason_code?: string
+          reason_text?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_deletions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_deletions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_deletions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           assigned_user_id: string | null
@@ -381,6 +442,7 @@ export type Database = {
           budget_min: number | null
           city: string | null
           created_at: string | null
+          deleted_at: string | null
           email: string | null
           full_name: string
           id: string
@@ -403,6 +465,7 @@ export type Database = {
           budget_min?: number | null
           city?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           email?: string | null
           full_name: string
           id?: string
@@ -425,6 +488,7 @@ export type Database = {
           budget_min?: number | null
           city?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           email?: string | null
           full_name?: string
           id?: string
