@@ -494,6 +494,16 @@ const Import = () => {
     }, 50);
   };
 
+  // Helper to convert Supabase errors to friendly messages
+  const readableError = (err: any): string => {
+    const msg = String(err?.message || err);
+    if (/row-level security/i.test(msg)) return "Blocked by database security policy (RLS).";
+    if (/violates foreign key/i.test(msg)) return "Organization or relation not found.";
+    if (/invalid input value for enum/i.test(msg)) return "Invalid value for a dropdown field (e.g., Source).";
+    if (/null value in column .* violates not-null constraint/i.test(msg)) return "A required field is missing.";
+    return msg;
+  };
+
   const handleImport = async () => {
     setLoading(true);
 
@@ -513,53 +523,43 @@ const Import = () => {
       const rows = tableData as LeadRowWithMeta[];
       
       // 1) Split: empty rows vs rows with data
-      const emptyRows = rows.filter(r => !isNonEmptyRow(r));
-      const candidateRows = rows.filter(r => isNonEmptyRow(r));
+      const nonEmpty = rows.filter(isNonEmptyRow);
+      const valid = nonEmpty.filter(r =>
+        String(r.full_name || "").trim().length > 0 &&
+        hasAtLeastOneContact(r.email || "", r.phone || "")
+      );
+      const skippedEmpty = rows.length - nonEmpty.length;
 
-      // 2) Validate candidates: only keep rows with name + (email or phone)
-      const validRows: LeadRowWithMeta[] = [];
       const failed: { rowNumber: number; reason: string }[] = [];
-
-      for (const r of candidateRows) {
-        const nameOk = !!String(r.full_name || "").trim();
-        const contactOk = hasAtLeastOneContact(r.email || "", r.phone || "");
-        
-        if (!nameOk || !contactOk) {
-          failed.push({
-            rowNumber: r.__sourceRow ?? (rows.indexOf(r) + 1),
-            reason: !nameOk
-              ? "Missing full name"
-              : "Missing valid email or phone",
-          });
-          continue;
-        }
-        
-        // Normalize phone
-        const phone = normalizePhone(r.phone || "");
-        validRows.push({ ...r, phone: phone || r.phone });
-      }
-
-      // 3) Bulk insert leads in chunks
-      const chunkSize = 300;
       let successCount = 0;
 
-      for (let i = 0; i < validRows.length; i += chunkSize) {
-        const chunk = validRows.slice(i, i + chunkSize);
+      // 2) Bulk insert leads in chunks
+      const chunkSize = 300;
 
-        const payload = chunk.map((row) => ({
-          org_id: profile.org_id,
-          full_name: String(row.full_name).trim(),
-          email: row.email?.trim() || null,
-          phone: row.phone || null,
-          zip: row.zip?.trim() || null,
-          city: row.city?.trim() || null,
-          budget_min: row.budget_min ? Number(String(row.budget_min).replace(/[$,]/g, "")) : null,
-          budget_max: row.budget_max ? Number(String(row.budget_max).replace(/[$,]/g, "")) : null,
-          beds: row.beds ? Number(row.beds) : null,
-          baths: row.baths ? Number(row.baths) : null,
-          notes: row.notes?.trim() || null,
-          source: "Import" as any,
-        }));
+      for (let i = 0; i < valid.length; i += chunkSize) {
+        const chunk = valid.slice(i, i + chunkSize);
+
+        const payload = chunk.map((row) => {
+          const budgetMin = row.budget_min ? Number(String(row.budget_min).replace(/[$,]/g, "")) : null;
+          const budgetMax = row.budget_max ? Number(String(row.budget_max).replace(/[$,]/g, "")) : null;
+          const beds = row.beds ? Number(row.beds) : null;
+          const baths = row.baths ? Number(row.baths) : null;
+
+          return {
+            org_id: profile.org_id,
+            full_name: String(row.full_name).trim(),
+            email: row.email?.trim() || null,
+            phone: normalizePhone(row.phone || "") || null,
+            city: row.city?.trim() || null,
+            zip: row.zip?.trim() || null,
+            budget_min: (budgetMin !== null && !isNaN(budgetMin)) ? budgetMin : null,
+            budget_max: (budgetMax !== null && !isNaN(budgetMax)) ? budgetMax : null,
+            beds: (beds !== null && !isNaN(beds)) ? beds : null,
+            baths: (baths !== null && !isNaN(baths)) ? baths : null,
+            notes: row.notes?.trim() || null,
+            // Omit source to use DB default, or set to known enum value
+          };
+        });
 
         const { data: inserted, error } = await supabase
           .from("leads")
@@ -567,19 +567,41 @@ const Import = () => {
           .select("id");
 
         if (error) {
-          // Record chunk failures
-          for (const r of chunk) {
-            failed.push({
-              rowNumber: r.__sourceRow ?? (rows.indexOf(r) + 1),
-              reason: error.message || "Insert failed",
-            });
+          // Try inserting row-by-row to get specific error per row
+          for (const row of chunk) {
+            const singlePayload = {
+              org_id: profile.org_id,
+              full_name: String(row.full_name).trim(),
+              email: row.email?.trim() || null,
+              phone: normalizePhone(row.phone || "") || null,
+              city: row.city?.trim() || null,
+              zip: row.zip?.trim() || null,
+              budget_min: row.budget_min ? Number(String(row.budget_min).replace(/[$,]/g, "")) : null,
+              budget_max: row.budget_max ? Number(String(row.budget_max).replace(/[$,]/g, "")) : null,
+              beds: row.beds ? Number(row.beds) : null,
+              baths: row.baths ? Number(row.baths) : null,
+              notes: row.notes?.trim() || null,
+            };
+
+            const { error: rowError } = await supabase
+              .from("leads")
+              .insert([singlePayload]);
+
+            if (rowError) {
+              failed.push({
+                rowNumber: row.__sourceRow ?? (rows.indexOf(row) + 1),
+                reason: readableError(rowError),
+              });
+            } else {
+              successCount++;
+            }
           }
           continue;
         }
 
         successCount += inserted?.length || 0;
 
-        // 4) Add interactions for inserted leads
+        // 3) Add interactions for inserted leads
         if (inserted && inserted.length > 0) {
           const interactions = inserted.map((lead, idx) => {
             const originalRow = chunk[idx];
@@ -600,10 +622,9 @@ const Import = () => {
         }
       }
 
-      const skippedEmpty = emptyRows.length;
       const failedCount = failed.length;
 
-      // 5) Show results
+      // 4) Show results
       setImportResults({
         imported: successCount,
         skippedEmpty,
@@ -664,7 +685,14 @@ const Import = () => {
   const warningErrors = errors.filter(e => e.severity === "warning");
   const invalidRowNumbers = new Set(criticalErrors.map(e => e.row));
   const dataToDisplay = editing ? tableData : transformedData;
-  const validLeadsCount = dataToDisplay.filter((_, idx) => !invalidRowNumbers.has(idx + 1)).length;
+  
+  // Compute valid leads count: non-empty rows with name + contact
+  const nonEmptyRows = dataToDisplay.filter(isNonEmptyRow);
+  const validRows = nonEmptyRows.filter(r =>
+    String(r.full_name || "").trim().length > 0 &&
+    hasAtLeastOneContact(r.email || "", r.phone || "")
+  );
+  const validLeadsCount = validRows.length;
   
   // Helper to check if row has any value
   const hasAnyValue = (row: LeadRowWithMeta): boolean => {
@@ -855,28 +883,66 @@ const Import = () => {
       {step === "preview" && (
         <>
           {importResults && (
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle>Import Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="flex items-center gap-6">
-                <div>
-                  Imported: <strong>{importResults.imported}</strong>
-                </div>
-                <div>
-                  Skipped empty: <strong>{importResults.skippedEmpty}</strong>
-                </div>
-                <div>
-                  Failed: <strong>{importResults.failedCount}</strong>
-                </div>
-                {importResults.failedCount > 0 && (
-                  <Button variant="outline" size="sm" onClick={downloadFailuresCsv}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Download failures CSV
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+            <>
+              <Card className="mb-6">
+                <CardHeader>
+                  <CardTitle>Import Summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-6 mb-4">
+                    <div>
+                      Imported: <strong>{importResults.imported}</strong>
+                    </div>
+                    <div>
+                      Skipped empty: <strong>{importResults.skippedEmpty}</strong>
+                    </div>
+                    <div>
+                      Failed: <strong>{importResults.failedCount}</strong>
+                    </div>
+                    {importResults.failedCount > 0 && (
+                      <Button variant="outline" size="sm" onClick={downloadFailuresCsv}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Download failures CSV
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {importResults.failedCount > 0 && (
+                    <div className="mt-4 max-h-60 overflow-y-auto border rounded-md p-3">
+                      <h4 className="font-medium mb-2">Failed Rows:</h4>
+                      <ul className="space-y-1 text-sm">
+                        {importResults.failedRows.map((f, idx) => (
+                          <li key={idx}>
+                            Row {f.rowNumber}: {f.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {(() => {
+                const rlsFailures = importResults.failedRows.filter(f => 
+                  f.reason.includes("Blocked by database security policy")
+                );
+                const allFailedDueToRls = importResults.failedCount > 0 && 
+                  rlsFailures.length === importResults.failedCount;
+                
+                return allFailedDueToRls ? (
+                  <Alert variant="destructive" className="mb-6">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>All leads failed due to database security policy (RLS)</strong>
+                      <p className="text-sm mt-2">
+                        We couldn't save any leads because of your database row-level security. 
+                        Ask the developer to allow inserts into leads when org_id equals your organization.
+                      </p>
+                    </AlertDescription>
+                  </Alert>
+                ) : null;
+              })()}
+            </>
           )}
 
           {criticalErrors.length > 0 && (
@@ -1358,7 +1424,7 @@ const Import = () => {
               onClick={handleImport}
               disabled={validLeadsCount === 0 || loading}
             >
-              {loading ? "Importing..." : `Import ${validLeadsCount} Valid Lead${validLeadsCount !== 1 ? 's' : ''}${invalidRowNumbers.size > 0 ? ` (Skip ${invalidRowNumbers.size})` : ''}`}
+              {loading ? "Importing..." : `Import ${validLeadsCount} Valid Lead${validLeadsCount !== 1 ? 's' : ''}`}
             </Button>
           </div>
         </>
