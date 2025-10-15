@@ -952,7 +952,7 @@ const Import = () => {
                 </div>
               )}
               
-              <div ref={tableContainerRef} className="overflow-x-auto max-h-[500px] overflow-y-auto border rounded-md">
+              <div ref={tableContainerRef} className="overflow-x-auto max-h-[500px] overflow-y-auto min-h-[240px] border rounded-md">
                 <Table>
                   <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow>
@@ -1029,12 +1029,10 @@ const Import = () => {
                       const actualIdx = showOnlyIssues 
                         ? dataToDisplay.findIndex(r => r === row)
                         : idx;
-                      const hasError = invalidRowNumbers.has(actualIdx + 1) || rowErrors[actualIdx];
                       
                       return (
                         <TableRow 
-                          key={actualIdx} 
-                          className={hasError ? "bg-red-50 dark:bg-red-950/10" : ""}
+                          key={actualIdx}
                         >
                           <TableCell className="align-top" onPaste={(e) => editing && handlePaste(e, actualIdx, "full_name")}>
                             <EditableCell
