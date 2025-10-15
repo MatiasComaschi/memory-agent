@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, CheckCircle, XCircle, ArrowLeft, Download, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { Upload, CheckCircle, XCircle, ArrowLeft, Download, AlertTriangle, ChevronDown, ChevronUp, Edit } from "lucide-react";
 import {
   autoMapHeaders,
   coerceValue,
@@ -574,9 +574,15 @@ const Import = () => {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Preview ({transformedData.length} rows)</span>
-                {criticalErrors.length === 0 && (
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                )}
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setStep("mapping")}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit Mapping
+                  </Button>
+                  {criticalErrors.length === 0 && validLeadsCount > 0 && (
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                  )}
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent>
