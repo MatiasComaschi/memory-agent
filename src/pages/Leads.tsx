@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -25,15 +27,23 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Plus, Search, Filter, ArrowLeft, Upload, MapPin, MoreVertical, Trash2, Edit } from "lucide-react";
+import { Sparkles, Plus, Search, Filter, ArrowLeft, Upload, MapPin, MoreVertical, Trash2, Edit, ExternalLink, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { useMutation } from "@tanstack/react-query";
 import { DeleteLeadModal } from "@/components/DeleteLeadModal";
 import { EditLeadDrawer } from "@/components/EditLeadDrawer";
+import { BulkActionsBar } from "@/components/BulkActionsBar";
+import { getCRMUrl, getCRMStatus, shouldShowEnrichLocation, formatRelativeTime } from "@/lib/crmUtils";
 
 interface Lead {
   id: string;
@@ -55,6 +65,7 @@ interface Lead {
 
 const Leads = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -64,6 +75,8 @@ const Leads = () => {
   const [leadToDelete, setLeadToDelete] = useState<string | null>(null);
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
   const [leadToEdit, setLeadToEdit] = useState<string | null>(null);
+  const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
   const [newLead, setNewLead] = useState<{
     full_name: string;
     email: string;
@@ -87,6 +100,19 @@ const Leads = () => {
   useEffect(() => {
     loadLeads();
   }, []);
+
+  // Load connected integrations
+  const { data: connectedIntegrations } = useQuery({
+    queryKey: ["integrations"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("integrations")
+        .select("provider");
+
+      if (error) throw error;
+      return data?.map((i: any) => i.provider) || [];
+    },
+  });
 
   const loadLeads = async () => {
     try {
@@ -179,10 +205,23 @@ const Leads = () => {
 
       const [firstName, ...lastNameParts] = lead.full_name.split(' ');
       
+      // Check if we're updating (has external ID) or creating
+      const hasExternalId = 
+        (provider === 'hubspot' && (lead as any).hubspot_id) ||
+        (provider === 'pipedrive' && (lead as any).pipedrive_id) ||
+        (provider === 'followupboss' && (lead as any).fub_id);
+
+      const action = hasExternalId
+        ? (provider === 'hubspot' ? 'update_contact' : 
+           provider === 'pipedrive' ? 'update_person' : 'update_lead')
+        : (provider === 'hubspot' ? 'create_contact' : 
+           provider === 'pipedrive' ? 'create_person' : 'create_lead');
+      
       const { data, error } = await supabase.functions.invoke('sync-crm', {
         body: {
           provider,
-          action: provider === 'hubspot' ? 'create_contact' : provider === 'pipedrive' ? 'create_person' : 'create_lead',
+          action,
+          leadId,
           leadData: {
             first_name: firstName,
             last_name: lastNameParts.join(' ') || '',
@@ -190,7 +229,12 @@ const Leads = () => {
             email: lead.email,
             phone: lead.phone,
             city: lead.city,
+            state: (lead as any).state,
+            postal_code: (lead as any).postal_code || lead.zip,
             stage: lead.stage,
+            hubspot_id: (lead as any).hubspot_id,
+            pipedrive_id: (lead as any).pipedrive_id,
+            fub_id: (lead as any).fub_id,
           }
         }
       });
@@ -200,6 +244,7 @@ const Leads = () => {
     },
     onSuccess: (_, variables) => {
       toast.success(`Successfully synced to ${variables.provider}!`);
+      loadLeads();
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to sync with CRM");
@@ -285,6 +330,78 @@ const Leads = () => {
   const handleEditClick = (leadId: string) => {
     setLeadToEdit(leadId);
     setEditDrawerOpen(true);
+  };
+
+  const toggleLeadSelection = (leadId: string) => {
+    setSelectedLeads(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(leadId)) {
+        newSet.delete(leadId);
+      } else {
+        newSet.add(leadId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedLeads.size === filteredLeads.length) {
+      setSelectedLeads(new Set());
+    } else {
+      setSelectedLeads(new Set(filteredLeads.map(l => l.id)));
+    }
+  };
+
+  const handleBulkSync = async (provider: string) => {
+    setIsProcessingBulk(true);
+    const selectedLeadIds = Array.from(selectedLeads);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const leadId of selectedLeadIds) {
+      try {
+        await syncCrmMutation.mutateAsync({ leadId, provider });
+        successCount++;
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    setIsProcessingBulk(false);
+    setSelectedLeads(new Set());
+    
+    if (successCount > 0) {
+      toast.success(`Synced ${successCount} leads to ${provider}`);
+    }
+    if (failCount > 0) {
+      toast.error(`Failed to sync ${failCount} leads`);
+    }
+  };
+
+  const handleBulkEnrich = async () => {
+    setIsProcessingBulk(true);
+    const selectedLeadIds = Array.from(selectedLeads);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const leadId of selectedLeadIds) {
+      try {
+        await enrichLocationMutation.mutateAsync(leadId);
+        successCount++;
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    setIsProcessingBulk(false);
+    setSelectedLeads(new Set());
+    
+    if (successCount > 0) {
+      toast.success(`Enriched ${successCount} locations`);
+    }
+    if (failCount > 0) {
+      toast.error(`Failed to enrich ${failCount} locations`);
+    }
   };
 
   const getStageColor = (stage: string) => {
@@ -498,74 +615,219 @@ const Leads = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredLeads.map((lead) => (
-              <Card key={lead.id} className="shadow-soft hover:shadow-medium transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between">
-                      <h3 className="font-semibold text-lg">{lead.full_name}</h3>
-                      <div className="flex items-center gap-2">
-                        <Badge className={getStageColor(lead.stage)}>
-                          {lead.stage.replace("_", " ")}
-                        </Badge>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEditClick(lead.id)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit Lead
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'hubspot' })}>
-                              <Upload className="h-4 w-4 mr-2" />
-                              Sync to HubSpot
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'pipedrive' })}>
-                              <Upload className="h-4 w-4 mr-2" />
-                              Sync to Pipedrive
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'followupboss' })}>
-                              <Upload className="h-4 w-4 mr-2" />
-                              Sync to Follow Up Boss
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => enrichLocationMutation.mutate(lead.id)}>
-                              <MapPin className="h-4 w-4 mr-2" />
-                              Enrich Location
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDeleteClick(lead.id)}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete Lead
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+          <>
+            {selectedLeads.size > 0 && (
+              <div className="mb-4 flex items-center gap-2">
+                <Checkbox
+                  checked={selectedLeads.size === filteredLeads.length}
+                  onCheckedChange={toggleSelectAll}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {selectedLeads.size === filteredLeads.length ? 'Deselect all' : 'Select all'}
+                </span>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredLeads.map((lead) => {
+                const hubspotStatus = getCRMStatus(lead, 'hubspot');
+                const pipedriveStatus = getCRMStatus(lead, 'pipedrive');
+                const fubStatus = getCRMStatus(lead, 'followupboss');
+                const needsEnrich = shouldShowEnrichLocation(lead);
+
+                return (
+                  <Card key={lead.id} className="shadow-soft hover:shadow-medium transition-shadow">
+                    <CardContent className="pt-6">
+                      <div className="space-y-3">
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={selectedLeads.has(lead.id)}
+                            onCheckedChange={() => toggleLeadSelection(lead.id)}
+                            className="mt-1"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h3 className="font-semibold text-lg">{lead.full_name}</h3>
+                                <TooltipProvider>
+                                  <div className="flex gap-1 mt-1 flex-wrap">
+                                    {connectedIntegrations?.includes('hubspot') && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="outline" className="text-xs">
+                                            {hubspotStatus.isLinked ? '✓' : '○'} HubSpot
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {hubspotStatus.isLinked 
+                                            ? `Last synced: ${formatRelativeTime(hubspotStatus.lastSynced)}`
+                                            : 'Not linked'}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {connectedIntegrations?.includes('pipedrive') && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="outline" className="text-xs">
+                                            {pipedriveStatus.isLinked ? '✓' : '○'} Pipedrive
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {pipedriveStatus.isLinked 
+                                            ? `Last synced: ${formatRelativeTime(pipedriveStatus.lastSynced)}`
+                                            : 'Not linked'}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {connectedIntegrations?.includes('followupboss') && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="outline" className="text-xs">
+                                            {fubStatus.isLinked ? '✓' : '○'} FUB
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {fubStatus.isLinked 
+                                            ? `Last synced: ${formatRelativeTime(fubStatus.lastSynced)}`
+                                            : 'Not linked'}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    {!needsEnrich && (lead as any).location_enriched_at && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="outline" className="text-xs">
+                                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                                            Location
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          Enriched: {formatRelativeTime((lead as any).location_enriched_at)}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                  </div>
+                                </TooltipProvider>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge className={getStageColor(lead.stage)}>
+                                  {lead.stage.replace("_", " ")}
+                                </Badge>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleEditClick(lead.id)}>
+                                      <Edit className="h-4 w-4 mr-2" />
+                                      Edit Lead
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    {connectedIntegrations?.includes('hubspot') && hubspotStatus.isLinked && (
+                                      <>
+                                        <DropdownMenuItem 
+                                          onClick={() => window.open(getCRMUrl('hubspot', hubspotStatus.externalId!), '_blank')}
+                                        >
+                                          <ExternalLink className="h-4 w-4 mr-2" />
+                                          Open in HubSpot
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'hubspot' })}>
+                                          <Upload className="h-4 w-4 mr-2" />
+                                          Resync to HubSpot
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                    {connectedIntegrations?.includes('hubspot') && !hubspotStatus.isLinked && (
+                                      <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'hubspot' })}>
+                                        <Upload className="h-4 w-4 mr-2" />
+                                        Sync to HubSpot
+                                      </DropdownMenuItem>
+                                    )}
+                                    {connectedIntegrations?.includes('pipedrive') && pipedriveStatus.isLinked && (
+                                      <>
+                                        <DropdownMenuItem 
+                                          onClick={() => window.open(getCRMUrl('pipedrive', pipedriveStatus.externalId!), '_blank')}
+                                        >
+                                          <ExternalLink className="h-4 w-4 mr-2" />
+                                          Open in Pipedrive
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'pipedrive' })}>
+                                          <Upload className="h-4 w-4 mr-2" />
+                                          Resync to Pipedrive
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                    {connectedIntegrations?.includes('pipedrive') && !pipedriveStatus.isLinked && (
+                                      <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'pipedrive' })}>
+                                        <Upload className="h-4 w-4 mr-2" />
+                                        Sync to Pipedrive
+                                      </DropdownMenuItem>
+                                    )}
+                                    {connectedIntegrations?.includes('followupboss') && fubStatus.isLinked && (
+                                      <>
+                                        <DropdownMenuItem 
+                                          onClick={() => window.open(getCRMUrl('followupboss', fubStatus.externalId!), '_blank')}
+                                        >
+                                          <ExternalLink className="h-4 w-4 mr-2" />
+                                          Open in Follow Up Boss
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'followupboss' })}>
+                                          <Upload className="h-4 w-4 mr-2" />
+                                          Resync to FUB
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                    {connectedIntegrations?.includes('followupboss') && !fubStatus.isLinked && (
+                                      <DropdownMenuItem onClick={() => syncCrmMutation.mutate({ leadId: lead.id, provider: 'followupboss' })}>
+                                        <Upload className="h-4 w-4 mr-2" />
+                                        Sync to Follow Up Boss
+                                      </DropdownMenuItem>
+                                    )}
+                                    {needsEnrich && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onClick={() => enrichLocationMutation.mutate(lead.id)}>
+                                          <MapPin className="h-4 w-4 mr-2" />
+                                          Enrich Location
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem 
+                                      onClick={() => handleDeleteClick(lead.id)}
+                                      className="text-destructive focus:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete Lead
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="space-y-1 text-sm text-muted-foreground pl-8">
+                          {lead.email && <p>📧 {lead.email}</p>}
+                          {lead.phone && <p>📱 {lead.phone}</p>}
+                          {lead.city && <p>📍 {lead.city}{lead.zip && `, ${lead.zip}`}</p>}
+                          <p>🔖 Source: {lead.source}</p>
+                          <p className="text-xs">
+                            Updated {formatDistanceToNow(new Date(lead.updated_at))} ago
+                          </p>
+                        </div>
+                        {lead.notes && (
+                          <p className="text-sm text-muted-foreground line-clamp-2 pt-2 border-t">
+                            {lead.notes}
+                          </p>
+                        )}
                       </div>
-                    </div>
-                    <div className="space-y-1 text-sm text-muted-foreground">
-                      {lead.email && <p>📧 {lead.email}</p>}
-                      {lead.phone && <p>📱 {lead.phone}</p>}
-                      {lead.city && <p>📍 {lead.city}{lead.zip && `, ${lead.zip}`}</p>}
-                      <p>🔖 Source: {lead.source}</p>
-                      <p className="text-xs">
-                        Updated {formatDistanceToNow(new Date(lead.updated_at))} ago
-                      </p>
-                    </div>
-                    {lead.notes && (
-                      <p className="text-sm text-muted-foreground line-clamp-2 pt-2 border-t">
-                        {lead.notes}
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
@@ -584,6 +846,14 @@ const Leads = () => {
           onSuccess={loadLeads}
         />
       )}
+
+      <BulkActionsBar
+        selectedCount={selectedLeads.size}
+        onClearSelection={() => setSelectedLeads(new Set())}
+        onSyncToCRM={handleBulkSync}
+        onEnrichLocations={handleBulkEnrich}
+        isProcessing={isProcessingBulk}
+      />
     </div>
   );
 };

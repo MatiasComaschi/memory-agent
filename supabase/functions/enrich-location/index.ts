@@ -123,7 +123,15 @@ serve(async (req) => {
       .from('leads')
       .update({
         city,
+        state,
         zip,
+        postal_code: zip,
+        country,
+        latitude: location.lat,
+        longitude: location.lng,
+        google_place_id: result.place_id,
+        location_enriched_at: new Date().toISOString(),
+        timezone: result.timezone || null,
         tags: [...existingTags, state, country].filter(Boolean)
       })
       .eq('id', leadId);

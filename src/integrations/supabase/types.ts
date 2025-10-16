@@ -500,18 +500,25 @@ export type Database = {
           contact_preference: string | null
           country: string | null
           created_at: string | null
+          crm_sync: Json | null
           custom_fields: Json | null
           deleted_at: string | null
           do_not_contact: boolean | null
           email: string | null
           financing_status: string | null
           first_name: string | null
+          fub_id: string | null
           full_name: string
+          google_place_id: string | null
           has_garage: boolean | null
+          hubspot_id: string | null
           id: string
           last_contact_at: string | null
           last_name: string | null
+          latitude: number | null
           lender_name: string | null
+          location_enriched_at: string | null
+          longitude: number | null
           min_lot_sqft: number | null
           min_sqft: number | null
           move_in_timeline: string | null
@@ -524,6 +531,7 @@ export type Database = {
           opt_out: boolean | null
           org_id: string
           phone: string | null
+          pipedrive_id: string | null
           postal_code: string | null
           preapproved: boolean | null
           property_types: string[] | null
@@ -553,18 +561,25 @@ export type Database = {
           contact_preference?: string | null
           country?: string | null
           created_at?: string | null
+          crm_sync?: Json | null
           custom_fields?: Json | null
           deleted_at?: string | null
           do_not_contact?: boolean | null
           email?: string | null
           financing_status?: string | null
           first_name?: string | null
+          fub_id?: string | null
           full_name: string
+          google_place_id?: string | null
           has_garage?: boolean | null
+          hubspot_id?: string | null
           id?: string
           last_contact_at?: string | null
           last_name?: string | null
+          latitude?: number | null
           lender_name?: string | null
+          location_enriched_at?: string | null
+          longitude?: number | null
           min_lot_sqft?: number | null
           min_sqft?: number | null
           move_in_timeline?: string | null
@@ -577,6 +592,7 @@ export type Database = {
           opt_out?: boolean | null
           org_id: string
           phone?: string | null
+          pipedrive_id?: string | null
           postal_code?: string | null
           preapproved?: boolean | null
           property_types?: string[] | null
@@ -606,18 +622,25 @@ export type Database = {
           contact_preference?: string | null
           country?: string | null
           created_at?: string | null
+          crm_sync?: Json | null
           custom_fields?: Json | null
           deleted_at?: string | null
           do_not_contact?: boolean | null
           email?: string | null
           financing_status?: string | null
           first_name?: string | null
+          fub_id?: string | null
           full_name?: string
+          google_place_id?: string | null
           has_garage?: boolean | null
+          hubspot_id?: string | null
           id?: string
           last_contact_at?: string | null
           last_name?: string | null
+          latitude?: number | null
           lender_name?: string | null
+          location_enriched_at?: string | null
+          longitude?: number | null
           min_lot_sqft?: number | null
           min_sqft?: number | null
           move_in_timeline?: string | null
@@ -630,6 +653,7 @@ export type Database = {
           opt_out?: boolean | null
           org_id?: string
           phone?: string | null
+          pipedrive_id?: string | null
           postal_code?: string | null
           preapproved?: boolean | null
           property_types?: string[] | null
