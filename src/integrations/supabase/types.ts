@@ -117,6 +117,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "campaign_logs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_perf"
+            referencedColumns: ["campaign_id"]
+          },
+          {
             foreignKeyName: "campaign_logs_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
@@ -169,11 +176,32 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "campaign_sends_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_perf"
+            referencedColumns: ["campaign_id"]
+          },
+          {
             foreignKeyName: "campaign_sends_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_sends_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_first_contact"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "campaign_sends_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_last_interaction"
+            referencedColumns: ["lead_id"]
           },
         ]
       }
@@ -326,6 +354,20 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "intent_snapshots_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_first_contact"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "intent_snapshots_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_last_interaction"
+            referencedColumns: ["lead_id"]
+          },
         ]
       }
       interactions: {
@@ -370,6 +412,20 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "interactions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_first_contact"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "interactions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_last_interaction"
+            referencedColumns: ["lead_id"]
+          },
         ]
       }
       lead_change_history: {
@@ -407,6 +463,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_change_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_first_contact"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_change_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_last_interaction"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "lead_change_history_org_id_fkey"
@@ -468,6 +538,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_deletions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_first_contact"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_deletions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_last_interaction"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "lead_deletions_org_id_fkey"
@@ -747,6 +831,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "message_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_first_contact"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "message_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_last_interaction"
+            referencedColumns: ["lead_id"]
+          },
+          {
             foreignKeyName: "message_queue_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
@@ -901,6 +999,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "triggers_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_first_contact"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "triggers_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_last_interaction"
+            referencedColumns: ["lead_id"]
+          },
+          {
             foreignKeyName: "triggers_org_id_fkey"
             columns: ["org_id"]
             isOneToOne: false
@@ -950,6 +1062,123 @@ export type Database = {
           status: string | null
         }
         Relationships: []
+      }
+      v_campaign_perf: {
+        Row: {
+          campaign_id: string | null
+          delivered: number | null
+          failed: number | null
+          name: string | null
+          org_id: string | null
+          sent: number | null
+          status: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_first_contact: {
+        Row: {
+          first_contact_at: string | null
+          lead_id: string | null
+          org_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_last_interaction: {
+        Row: {
+          last_interaction_at: string | null
+          lead_id: string | null
+          org_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_latest_intent: {
+        Row: {
+          intent_at: string | null
+          lead_id: string | null
+          purchase_window: Database["public"]["Enums"]["purchase_window"] | null
+          sentiment: Database["public"]["Enums"]["sentiment"] | null
+          urgency_score: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intent_snapshots_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intent_snapshots_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_first_contact"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "intent_snapshots_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "v_last_interaction"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
+      v_leads_daily: {
+        Row: {
+          day: string | null
+          leads: number | null
+          org_id: string | null
+          source: Database["public"]["Enums"]["lead_source"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_stage_counts: {
+        Row: {
+          cnt: number | null
+          org_id: string | null
+          stage: Database["public"]["Enums"]["lead_stage"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
